@@ -67,6 +67,10 @@ public class ConsumerHandler extends AbstractGrpcHandler {
     ConsumerParameters parameters = clientParameters.getConsumerParameters();
 
     try {
+      // checkAuth() and getConsumerConfiguration() should be called after assigning a value to this.subscription
+      this.subscription = parameters.getSubscription();
+      checkArgument(!subscription.isEmpty(), "Empty subscription name");
+
       ConsumerBuilderImpl<byte[]> builder =
           (ConsumerBuilderImpl<byte[]>)
               getConsumerConfiguration(parameters, service.getPulsarClient());
@@ -74,10 +78,6 @@ public class ConsumerHandler extends AbstractGrpcHandler {
           (builder.getConf().getReceiverQueueSize() == 0)
               ? 1
               : builder.getConf().getReceiverQueueSize();
-
-      // checkAuth() should be called after assigning a value to this.subscription
-      this.subscription = parameters.getSubscription();
-      checkArgument(!subscription.isEmpty(), "Empty subscription name");
 
       // TODO: make checkAuth async
       checkAuth();
