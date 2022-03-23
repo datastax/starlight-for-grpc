@@ -1,0 +1,3 @@
+name: grpc-proxy
+description: Starlight-for-gRPC Proxy Extension
+extensionClass: com.datastax.oss.starlight.grpc.GatewayProxyProtocolHandler

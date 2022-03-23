@@ -1,0 +1,3 @@
+name: grpc-proxy
+description: Starlight-for-gRPC Protocol Handler
+handlerClass: com.datastax.oss.starlight.grpc.GatewayProtocolHandler
