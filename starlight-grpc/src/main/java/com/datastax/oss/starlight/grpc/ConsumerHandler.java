@@ -29,7 +29,6 @@ import com.google.common.cache.CacheBuilder;
 import com.google.protobuf.ByteString;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
@@ -110,6 +109,8 @@ public class ConsumerHandler extends AbstractGrpcHandler {
               break;
             case END_OF_TOPIC:
               handleEndOfTopic();
+              break;
+            default:
               break;
           }
         } catch (IOException e) {
@@ -298,8 +299,9 @@ public class ConsumerHandler extends AbstractGrpcHandler {
         return SubscriptionType.Shared;
       case SUBSCRIPTION_TYPE_DEFAULT:
         return null;
+      default:
+        throw new IllegalArgumentException("Invalid subscription type");
     }
-    throw new IllegalArgumentException("Invalid subscription type");
   }
 
   private ConsumerBuilder<byte[]> getConsumerConfiguration(

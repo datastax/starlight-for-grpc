@@ -24,9 +24,9 @@ import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
 
 public class AuthenticationDataGrpc implements AuthenticationDataSource {
 
-  protected final SocketAddress remoteAddress;
-  protected final SSLSession sslSession;
-  protected final Map<String, String> authHeaders;
+  private final SocketAddress remoteAddress;
+  private final SSLSession sslSession;
+  private final Map<String, String> authHeaders;
 
   public AuthenticationDataGrpc(
       SocketAddress remoteAddress, SSLSession sslSession, Map<String, String> authHeaders) {

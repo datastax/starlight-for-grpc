@@ -28,8 +28,8 @@ jobs:
       - name: Build with Maven skipTests
         run: mvn -B clean install -DskipTests
 
-      - name: Style check
-        run: mvn -B checkstyle:check
+#      - name: Style check
+#        run: mvn -B checkstyle:check
 
       - name: Spotbugs check
         run: mvn -B spotbugs:check

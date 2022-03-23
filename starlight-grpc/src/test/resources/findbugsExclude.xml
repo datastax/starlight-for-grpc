@@ -29,4 +29,7 @@
     -->
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2,MS_PKGPROTECT"/>
   </Match>
+  <Match>
+    <Package name="~com[.]datastax[.]oss[.]starlight[.]grpc[.]proto([.].*)?"/>
+  </Match>
 </FindBugsFilter>
