@@ -203,8 +203,9 @@ public class ProducerHandler extends AbstractGrpcHandler {
         return HashingScheme.Murmur3_32Hash;
       case HASHING_SCHEME_DEFAULT:
         return null;
+      default:
+        throw new IllegalArgumentException("Invalid hashing scheme");
     }
-    throw new IllegalArgumentException("Invalid hashing scheme");
   }
 
   private static MessageRoutingMode toMessageRoutingMode(

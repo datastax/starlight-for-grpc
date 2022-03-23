@@ -57,8 +57,7 @@ public class ConsumerHandler extends AbstractGrpcHandler {
   private final AtomicInteger pendingMessages = new AtomicInteger();
 
   // Make sure use the same BatchMessageIdImpl to acknowledge the batch message, otherwise the
-  // BatchMessageAcker
-  // of the BatchMessageIdImpl will not complete.
+  // BatchMessageAcker of the BatchMessageIdImpl will not complete.
   private final Cache<ByteString, MessageId> messageIdCache =
       CacheBuilder.newBuilder().expireAfterWrite(1, TimeUnit.HOURS).build();
 
