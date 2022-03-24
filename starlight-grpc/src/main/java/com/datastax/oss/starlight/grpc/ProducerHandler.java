@@ -217,8 +217,9 @@ public class ProducerHandler extends AbstractGrpcHandler {
         return MessageRoutingMode.RoundRobinPartition;
       case MESSAGE_ROUTING_MODE_DEFAULT:
         return null;
+      default:
+        throw new IllegalArgumentException("Invalid message routing mode");
     }
-    throw new IllegalArgumentException("Invalid message routing mode");
   }
 
   private static CompressionType toCompressionType(ProducerParameters.CompressionType type) {
@@ -231,8 +232,9 @@ public class ProducerHandler extends AbstractGrpcHandler {
         return CompressionType.ZLIB;
       case COMPRESSION_TYPE_DEFAULT:
         return null;
+      default:
+        throw new IllegalArgumentException("Invalid compression type");
     }
-    throw new IllegalArgumentException("Invalid compression type");
   }
 
   private ProducerBuilder<byte[]> getProducerBuilder(
@@ -276,9 +278,9 @@ public class ProducerHandler extends AbstractGrpcHandler {
       builder.maxPendingMessages(params.getMaxPendingMessages().getValue());
     }
 
-    if (params.hasBatchingMaxPublishDelay()) {
+    if (params.hasBatchingMaxPublishDelayMillis()) {
       builder.batchingMaxPublishDelay(
-          params.getBatchingMaxPublishDelay().getValue(), TimeUnit.MILLISECONDS);
+          params.getBatchingMaxPublishDelayMillis().getValue(), TimeUnit.MILLISECONDS);
     }
 
     MessageRoutingMode messageRoutingMode = toMessageRoutingMode(params.getMessageRoutingMode());

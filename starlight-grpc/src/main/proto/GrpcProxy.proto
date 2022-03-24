@@ -112,7 +112,7 @@ message ProducerParameters {
   google.protobuf.BoolValue batching_enabled = 2;
   google.protobuf.UInt32Value batching_max_messages = 3;
   google.protobuf.UInt32Value max_pending_messages = 4;
-  google.protobuf.UInt64Value batching_max_publish_delay = 5;
+  google.protobuf.UInt64Value batching_max_publish_delay_millis = 5;
   MessageRoutingMode message_routing_mode = 6;
   CompressionType compression_type = 7;
   string producer_name = 8;
@@ -132,6 +132,12 @@ message ConsumerParameters {
     SUBSCRIPTION_TYPE_FAILOVER = 2;
     SUBSCRIPTION_TYPE_SHARED = 3;
   }
+  enum ConsumerCryptoFailureAction {
+      CONSUMER_CRYPTO_FAILURE_ACTION_DEFAULT = 0;
+      CONSUMER_CRYPTO_FAILURE_ACTION_FAIL = 1;
+      CONSUMER_CRYPTO_FAILURE_ACTION_DISCARD = 2;
+      CONSUMER_CRYPTO_FAILURE_ACTION_CONSUME = 3;
+  }
   string subscription = 1;
   google.protobuf.UInt64Value ack_timeout_millis = 2;
   SubscriptionType subscription_type = 3;
@@ -139,6 +145,8 @@ message ConsumerParameters {
   string consumer_name = 5;
   google.protobuf.UInt32Value priority_level = 6;
   DeadLetterPolicy dead_letter_policy = 7;
+  google.protobuf.UInt64Value negative_ack_redelivery_delay_millis = 8;
+  ConsumerCryptoFailureAction crypto_failure_action = 9;
 }
 
 message ClientParameters {

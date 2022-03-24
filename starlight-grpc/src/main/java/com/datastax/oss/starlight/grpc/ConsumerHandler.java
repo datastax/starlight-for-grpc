@@ -34,6 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.ConsumerBuilder;
+import org.apache.pulsar.client.api.ConsumerCryptoFailureAction;
 import org.apache.pulsar.client.api.DeadLetterPolicy;
 import org.apache.pulsar.client.api.DeadLetterPolicy.DeadLetterPolicyBuilder;
 import org.apache.pulsar.client.api.MessageId;
@@ -67,7 +68,8 @@ public class ConsumerHandler extends AbstractGrpcHandler {
     ConsumerParameters parameters = clientParameters.getConsumerParameters();
 
     try {
-      // checkAuth() and getConsumerConfiguration() should be called after assigning a value to this.subscription
+      // checkAuth() and getConsumerConfiguration() should be called after assigning a value to
+      // this.subscription
       this.subscription = parameters.getSubscription();
       checkArgument(!subscription.isEmpty(), "Empty subscription name");
 
@@ -303,6 +305,22 @@ public class ConsumerHandler extends AbstractGrpcHandler {
     }
   }
 
+  private static ConsumerCryptoFailureAction toConsumerCryptoFailureAction(
+      ConsumerParameters.ConsumerCryptoFailureAction action) {
+    switch (action) {
+      case CONSUMER_CRYPTO_FAILURE_ACTION_FAIL:
+        return ConsumerCryptoFailureAction.FAIL;
+      case CONSUMER_CRYPTO_FAILURE_ACTION_DISCARD:
+        return ConsumerCryptoFailureAction.DISCARD;
+      case CONSUMER_CRYPTO_FAILURE_ACTION_CONSUME:
+        return ConsumerCryptoFailureAction.CONSUME;
+      case CONSUMER_CRYPTO_FAILURE_ACTION_DEFAULT:
+        return null;
+      default:
+        throw new IllegalArgumentException("Invalid consumer crypto failure action");
+    }
+  }
+
   private ConsumerBuilder<byte[]> getConsumerConfiguration(
       ConsumerParameters params, PulsarClient client) {
     ConsumerBuilder<byte[]> builder = client.newConsumer();
@@ -317,7 +335,7 @@ public class ConsumerHandler extends AbstractGrpcHandler {
     }
 
     if (params.hasReceiverQueueSize()) {
-      builder.receiverQueueSize(params.getReceiverQueueSize().getValue());
+      builder.receiverQueueSize(Math.min(params.getReceiverQueueSize().getValue(), 1000));
     }
 
     if (!params.getConsumerName().isEmpty()) {
@@ -326,6 +344,11 @@ public class ConsumerHandler extends AbstractGrpcHandler {
 
     if (params.hasPriorityLevel()) {
       builder.priorityLevel(params.getPriorityLevel().getValue());
+    }
+
+    if (params.hasNegativeAckRedeliveryDelayMillis()) {
+      builder.negativeAckRedeliveryDelay(
+          params.getNegativeAckRedeliveryDelayMillis().getValue(), TimeUnit.MILLISECONDS);
     }
 
     if (params.hasDeadLetterPolicy()) {
@@ -342,6 +365,12 @@ public class ConsumerHandler extends AbstractGrpcHandler {
         dlpBuilder.deadLetterTopic(deadLetterPolicy.getDeadLetterTopic());
       }
       builder.deadLetterPolicy(dlpBuilder.build());
+    }
+
+    ConsumerCryptoFailureAction action =
+        toConsumerCryptoFailureAction(params.getCryptoFailureAction());
+    if (action != null) {
+      builder.cryptoFailureAction(action);
     }
     return builder;
   }

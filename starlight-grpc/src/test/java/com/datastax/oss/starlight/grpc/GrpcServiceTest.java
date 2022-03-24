@@ -24,9 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
 import com.datastax.oss.starlight.grpc.proto.ClientParameters;
 import com.datastax.oss.starlight.grpc.proto.ConsumerParameters;
 import com.datastax.oss.starlight.grpc.proto.DeadLetterPolicy;
@@ -48,6 +47,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.pulsar.client.api.CompressionType;
+import org.apache.pulsar.client.api.ConsumerCryptoFailureAction;
 import org.apache.pulsar.client.api.HashingScheme;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.MessageRoutingMode;
@@ -76,42 +76,41 @@ public class GrpcServiceTest {
     int sendTimeoutMillis = 43;
     int batchingMaxMessages = 44;
     int maxPendingMessages = 45;
-    long batchingMaxPublishDelay = 46;
+    int batchingMaxPublishDelayMillis = 46;
 
     GatewayService service = mock(GatewayService.class);
     PulsarGrpcService grpcService = new PulsarGrpcService(service);
 
-    ClientParameters clientParams = ClientParameters.newBuilder()
-        .setTopic(TOPIC)
-        .setProducerParameters(
-            ProducerParameters.newBuilder()
-                .setMessageRoutingMode(ProducerParameters.MessageRoutingMode.MESSAGE_ROUTING_MODE_ROUND_ROBIN_PARTITION)
-                .setProducerName(producerName)
-                .setInitialSequenceId(UInt64Value.of(initialSequenceId))
-                .setHashingScheme(ProducerParameters.HashingScheme.HASHING_SCHEME_MURMUR3_32HASH)
-                .setSendTimeoutMillis(UInt32Value.of(sendTimeoutMillis))
-                .setBatchingEnabled(BoolValue.of(true))
-                .setBatchingMaxMessages(UInt32Value.of(batchingMaxMessages))
-                .setMaxPendingMessages(UInt32Value.of(maxPendingMessages))
-                .setBatchingMaxPublishDelay(UInt64Value.of(batchingMaxPublishDelay))
-                .setCompressionType(ProducerParameters.CompressionType.COMPRESSION_TYPE_LZ4)
-        )
-        .build();
+    ClientParameters clientParams =
+        ClientParameters.newBuilder()
+            .setTopic(TOPIC)
+            .setProducerParameters(
+                ProducerParameters.newBuilder()
+                    .setMessageRoutingMode(
+                        ProducerParameters.MessageRoutingMode
+                            .MESSAGE_ROUTING_MODE_ROUND_ROBIN_PARTITION)
+                    .setProducerName(producerName)
+                    .setInitialSequenceId(UInt64Value.of(initialSequenceId))
+                    .setHashingScheme(
+                        ProducerParameters.HashingScheme.HASHING_SCHEME_MURMUR3_32HASH)
+                    .setSendTimeoutMillis(UInt32Value.of(sendTimeoutMillis))
+                    .setBatchingEnabled(BoolValue.of(true))
+                    .setBatchingMaxMessages(UInt32Value.of(batchingMaxMessages))
+                    .setMaxPendingMessages(UInt32Value.of(maxPendingMessages))
+                    .setBatchingMaxPublishDelayMillis(UInt64Value.of(batchingMaxPublishDelayMillis))
+                    .setCompressionType(ProducerParameters.CompressionType.COMPRESSION_TYPE_LZ4))
+            .build();
     Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
 
     PulsarClient pulsarClient = mock(PulsarClient.class);
     when(service.getPulsarClient()).thenReturn(pulsarClient);
 
-    ProducerBuilderImpl producerBuilder = spy(new ProducerBuilderImpl(null, null));
+    ProducerBuilderImpl<byte[]> producerBuilder = spy(new ProducerBuilderImpl<>(null, null));
     doReturn(null).when(producerBuilder).create();
 
     when(pulsarClient.newProducer()).thenReturn(producerBuilder);
 
     grpcService.produce(null);
-
-    // Verify producer default overridable values
-    verify(producerBuilder, times(1)).enableBatching(false);
-    verify(producerBuilder, times(1)).messageRoutingMode(MessageRoutingMode.SinglePartition);
 
     // Verify producer conf
     ProducerConfigurationData producerBuilderConf = producerBuilder.getConf();
@@ -123,10 +122,22 @@ public class GrpcServiceTest {
     assertTrue(producerBuilderConf.isBatchingEnabled());
     assertEquals(batchingMaxMessages, producerBuilderConf.getBatchingMaxMessages());
     assertEquals(maxPendingMessages, producerBuilderConf.getMaxPendingMessages());
-    assertEquals(batchingMaxPublishDelay *1000, producerBuilderConf.getBatchingMaxPublishDelayMicros());
-    assertEquals(MessageRoutingMode.RoundRobinPartition, producerBuilderConf.getMessageRoutingMode());
+    assertEquals(
+        batchingMaxPublishDelayMillis * 1000,
+        producerBuilderConf.getBatchingMaxPublishDelayMicros());
+    assertEquals(
+        MessageRoutingMode.RoundRobinPartition, producerBuilderConf.getMessageRoutingMode());
     assertEquals(CompressionType.LZ4, producerBuilderConf.getCompressionType());
     assertEquals("persistent://public/default/test-topic", producerBuilderConf.getTopicName());
+
+    // Verify default values
+    clientParams = ClientParameters.newBuilder().setTopic(TOPIC).build();
+    Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
+
+    grpcService.produce(null);
+
+    assertEquals(MessageRoutingMode.SinglePartition, producerBuilderConf.getMessageRoutingMode());
+    assertFalse(producerBuilderConf.isBatchingEnabled());
   }
 
   @Test
@@ -139,14 +150,13 @@ public class GrpcServiceTest {
     String key = "test-key";
     String replicationCluster = "test-cluster";
     long eventTime = 42;
-    long deliverAt = 43;
+    long deliverAt = 100043;
+    long deliverAfterMs = 100044;
 
     GatewayService service = mock(GatewayService.class);
     PulsarGrpcService grpcService = new PulsarGrpcService(service);
 
-    ClientParameters clientParams = ClientParameters.newBuilder()
-        .setTopic(TOPIC)
-        .build();
+    ClientParameters clientParams = ClientParameters.newBuilder().setTopic(TOPIC).build();
     Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
 
     CountDownLatch latch = new CountDownLatch(1);
@@ -154,13 +164,14 @@ public class GrpcServiceTest {
     PulsarClient pulsarClient = mock(PulsarClient.class);
     when(service.getPulsarClient()).thenReturn(pulsarClient);
 
-    ProducerBuilderImpl producerBuilder = spy(new ProducerBuilderImpl(null, null));
+    ProducerBuilderImpl<byte[]> producerBuilder = spy(new ProducerBuilderImpl<>(null, null));
     when(pulsarClient.newProducer()).thenReturn(producerBuilder);
 
-    ProducerBase producer = mock(ProducerBase.class);
+    ProducerBase<byte[]> producer = mock(ProducerBase.class);
     doReturn(producer).when(producerBuilder).create();
 
-    TypedMessageBuilderImpl message = spy(new TypedMessageBuilderImpl(producer, Schema.BYTES));
+    TypedMessageBuilderImpl<byte[]> message =
+        spy(new TypedMessageBuilderImpl<>(producer, Schema.BYTES));
     when(producer.newMessage()).thenReturn(message);
 
     MessageId messageId = DefaultImplementation.newMessageId(1, 2, 3);
@@ -168,39 +179,36 @@ public class GrpcServiceTest {
 
     AtomicReference<ProducerAck> ackRef = new AtomicReference<>();
 
-    StreamObserver<ProducerResponse> response = new StreamObserver<ProducerResponse>() {
-      @Override
-      public void onNext(ProducerResponse producerResponse) {
-        if (producerResponse.hasAck()) {
-          ackRef.set(producerResponse.getAck());
-          latch.countDown();
-        }
-      }
+    StreamObserver<ProducerResponse> response =
+        new StreamObserver<ProducerResponse>() {
+          @Override
+          public void onNext(ProducerResponse producerResponse) {
+            if (producerResponse.hasAck()) {
+              ackRef.set(producerResponse.getAck());
+              latch.countDown();
+            }
+          }
 
-      @Override
-      public void onError(Throwable throwable) {
+          @Override
+          public void onError(Throwable throwable) {}
 
-      }
-
-      @Override
-      public void onCompleted() {
-
-      }
-    };
+          @Override
+          public void onCompleted() {}
+        };
     StreamObserver<ProducerRequest> requests = grpcService.produce(response);
 
-    ProducerRequest request = ProducerRequest.newBuilder()
-        .setSend(
-            ProducerSend.newBuilder()
-                .setPayload(ByteString.copyFromUtf8(payload))
-                .setContext(context)
-                .putProperties(propertyKey, propertyValue)
-                .setKey(key)
-                .addReplicationClusters(replicationCluster)
-                .setEventTime(eventTime)
-                .setDeliverAt(deliverAt)
-        )
-        .build();
+    ProducerRequest request =
+        ProducerRequest.newBuilder()
+            .setSend(
+                ProducerSend.newBuilder()
+                    .setPayload(ByteString.copyFromUtf8(payload))
+                    .setContext(context)
+                    .putProperties(propertyKey, propertyValue)
+                    .setKey(key)
+                    .addReplicationClusters(replicationCluster)
+                    .setEventTime(eventTime)
+                    .setDeliverAt(deliverAt))
+            .build();
     requests.onNext(request);
 
     assertTrue(latch.await(5, TimeUnit.SECONDS));
@@ -211,61 +219,69 @@ public class GrpcServiceTest {
     assertArrayEquals(messageId.toByteArray(), ack.getMessageId().toByteArray());
 
     // Verify message properties
-    MessageImpl sentMessage = (MessageImpl)message.getMessage();
+    MessageImpl<byte[]> sentMessage = (MessageImpl<byte[]>) message.getMessage();
     assertEquals(new String(message.getContent().array(), StandardCharsets.UTF_8), payload);
     assertEquals(propertyValue, sentMessage.getProperty(propertyKey));
     assertEquals(key, sentMessage.getKey());
-    assertIterableEquals(Collections.singletonList(replicationCluster), sentMessage.getReplicateTo());
+    assertIterableEquals(
+        Collections.singletonList(replicationCluster), sentMessage.getReplicateTo());
     assertEquals(eventTime, sentMessage.getEventTime());
     assertEquals(deliverAt, message.getMetadataBuilder().getDeliverAtTime());
 
     // Test deliverAfter
-    request = ProducerRequest.newBuilder()
-        .setSend(
-            ProducerSend.newBuilder()
-                .setDeliverAfterMs(deliverAt)
-        )
-        .build();
+    request =
+        ProducerRequest.newBuilder()
+            .setSend(ProducerSend.newBuilder().setDeliverAfterMs(deliverAfterMs))
+            .build();
     requests.onNext(request);
-    assertTrue(message.getMetadataBuilder().getDeliverAtTime() - System.currentTimeMillis() + 5 >= deliverAt);
-
+    assertEquals(
+        message.getMetadataBuilder().getDeliverAtTime() - System.currentTimeMillis(),
+        deliverAfterMs,
+        5);
   }
 
   @Test
   void testConsumeParameters() throws Exception {
     long ackTimeout = 1042;
-    int receiverQueueSize = 43;
+    int receiverQueueSize = 999;
     String consumerName = "test-consumer";
     int priorityLevel = 44;
     String dlTopic = "test-dl-topic";
     int dlMaxRedeliverCount = 45;
+    int negativeAckRedeliveryDelayMillis = 46;
 
     GatewayService service = mock(GatewayService.class);
     PulsarGrpcService grpcService = new PulsarGrpcService(service);
 
-    // TODO: test generated DLQ topic name
-    ClientParameters clientParams = ClientParameters.newBuilder()
-        .setTopic(TOPIC)
-        .setConsumerParameters(ConsumerParameters.newBuilder()
-            .setSubscription("test-subscription")
-            .setAckTimeoutMillis(UInt64Value.of(ackTimeout))
-            .setSubscriptionType(ConsumerParameters.SubscriptionType.SUBSCRIPTION_TYPE_SHARED)
-            .setReceiverQueueSize(UInt32Value.of(receiverQueueSize))
-            .setConsumerName(consumerName)
-            .setPriorityLevel(UInt32Value.of(priorityLevel))
-            .setDeadLetterPolicy(DeadLetterPolicy.newBuilder()
-                .setDeadLetterTopic(dlTopic)
-                .setMaxRedeliverCount(UInt32Value.of(dlMaxRedeliverCount))
-            )
-        )
-        .build();
+    ClientParameters clientParams =
+        ClientParameters.newBuilder()
+            .setTopic(TOPIC)
+            .setConsumerParameters(
+                ConsumerParameters.newBuilder()
+                    .setSubscription("test-subscription")
+                    .setAckTimeoutMillis(UInt64Value.of(ackTimeout))
+                    .setSubscriptionType(
+                        ConsumerParameters.SubscriptionType.SUBSCRIPTION_TYPE_SHARED)
+                    .setReceiverQueueSize(UInt32Value.of(receiverQueueSize))
+                    .setConsumerName(consumerName)
+                    .setPriorityLevel(UInt32Value.of(priorityLevel))
+                    .setNegativeAckRedeliveryDelayMillis(
+                        UInt64Value.of(negativeAckRedeliveryDelayMillis))
+                    .setDeadLetterPolicy(
+                        DeadLetterPolicy.newBuilder()
+                            .setDeadLetterTopic(dlTopic)
+                            .setMaxRedeliverCount(UInt32Value.of(dlMaxRedeliverCount)))
+                    .setCryptoFailureAction(
+                        ConsumerParameters.ConsumerCryptoFailureAction
+                            .CONSUMER_CRYPTO_FAILURE_ACTION_DISCARD))
+            .build();
     Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
 
     PulsarClient pulsarClient = mock(PulsarClient.class);
     when(service.getPulsarClient()).thenReturn(pulsarClient);
 
-    ConsumerBuilderImpl consumerBuilder = spy(new ConsumerBuilderImpl(null, null));
-    ConsumerBase consumer = mock(ConsumerBase.class);
+    ConsumerBuilderImpl<byte[]> consumerBuilder = spy(new ConsumerBuilderImpl<>(null, null));
+    ConsumerBase<byte[]> consumer = mock(ConsumerBase.class);
     when(consumer.receiveAsync()).thenReturn(new CompletableFuture<>());
     doReturn(consumer).when(consumerBuilder).subscribe();
 
@@ -273,31 +289,41 @@ public class GrpcServiceTest {
 
     grpcService.consume(null);
 
-    ConsumerConfigurationData consumerBuilderConf = consumerBuilder.getConf();
+    ConsumerConfigurationData<byte[]> consumerBuilderConf = consumerBuilder.getConf();
     assertEquals(ackTimeout, consumerBuilderConf.getAckTimeoutMillis());
     assertEquals(SubscriptionType.Shared, consumerBuilderConf.getSubscriptionType());
     assertEquals(receiverQueueSize, consumerBuilderConf.getReceiverQueueSize());
     assertEquals(consumerName, consumerBuilderConf.getConsumerName());
     assertEquals(priorityLevel, consumerBuilderConf.getPriorityLevel());
     assertEquals(dlTopic, consumerBuilderConf.getDeadLetterPolicy().getDeadLetterTopic());
-    assertEquals(dlMaxRedeliverCount, consumerBuilderConf.getDeadLetterPolicy().getMaxRedeliverCount());
+    assertEquals(
+        dlMaxRedeliverCount, consumerBuilderConf.getDeadLetterPolicy().getMaxRedeliverCount());
+    assertEquals(
+        negativeAckRedeliveryDelayMillis * 1000,
+        consumerBuilderConf.getNegativeAckRedeliveryDelayMicros());
+    assertEquals(ConsumerCryptoFailureAction.DISCARD, consumerBuilderConf.getCryptoFailureAction());
 
     // Test generated DLQ topic name
-    clientParams = ClientParameters.newBuilder()
-        .setTopic(TOPIC)
-        .setConsumerParameters(ConsumerParameters.newBuilder()
-            .setSubscription("test-subscription")
-            .setDeadLetterPolicy(DeadLetterPolicy.newBuilder()
-                .setMaxRedeliverCount(UInt32Value.of(dlMaxRedeliverCount))
-            )
-        )
-        .build();
+    clientParams =
+        ClientParameters.newBuilder()
+            .setTopic(TOPIC)
+            .setConsumerParameters(
+                ConsumerParameters.newBuilder()
+                    .setSubscription("test-subscription")
+                    .setReceiverQueueSize(UInt32Value.of(1001))
+                    .setDeadLetterPolicy(
+                        DeadLetterPolicy.newBuilder()
+                            .setMaxRedeliverCount(UInt32Value.of(dlMaxRedeliverCount))))
+            .build();
 
     Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
 
     grpcService.consume(null);
 
-    assertEquals("persistent://public/default/test-topic-test-subscription-DLQ",
+    assertEquals(
+        "persistent://public/default/test-topic-test-subscription-DLQ",
         consumerBuilderConf.getDeadLetterPolicy().getDeadLetterTopic());
+    // receive queue size is the minimum value of default value (1000) and user defined value(1001)
+    assertEquals(1000, consumerBuilderConf.getReceiverQueueSize());
   }
 }
