@@ -20,10 +20,16 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.datastax.oss.starlight.grpc.proto.ClientParameters;
@@ -34,25 +40,29 @@ import com.datastax.oss.starlight.grpc.proto.ProducerParameters;
 import com.datastax.oss.starlight.grpc.proto.ProducerRequest;
 import com.datastax.oss.starlight.grpc.proto.ProducerResponse;
 import com.datastax.oss.starlight.grpc.proto.ProducerSend;
+import com.datastax.oss.starlight.grpc.proto.ProducerSendError;
 import com.google.protobuf.BoolValue;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.UInt32Value;
 import com.google.protobuf.UInt64Value;
+import com.google.rpc.Code;
 import io.grpc.Context;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import org.apache.pulsar.client.api.CompressionType;
 import org.apache.pulsar.client.api.ConsumerCryptoFailureAction;
 import org.apache.pulsar.client.api.HashingScheme;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.MessageRoutingMode;
 import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.Schema;
+import org.apache.pulsar.client.api.SchemaSerializationException;
 import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.client.impl.ConsumerBase;
 import org.apache.pulsar.client.impl.ConsumerBuilderImpl;
@@ -63,23 +73,51 @@ import org.apache.pulsar.client.impl.TypedMessageBuilderImpl;
 import org.apache.pulsar.client.impl.conf.ConsumerConfigurationData;
 import org.apache.pulsar.client.impl.conf.ProducerConfigurationData;
 import org.apache.pulsar.client.internal.DefaultImplementation;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class GrpcServiceTest {
+  private static final String TOPIC = "test-topic";
+  private static final String TEST_CONTEXT = "test-context";
 
-  public static final String TOPIC = "test-topic";
+  private PulsarGrpcService grpcService;
+  private PulsarClient pulsarClient;
+  private ProducerBuilderImpl<byte[]> producerBuilder;
+  private ProducerBase<byte[]> producer;
+  private TypedMessageBuilderImpl<byte[]> message;
+
+  @BeforeEach
+  void setup() throws Exception {
+    GatewayService gatewayService = mock(GatewayService.class);
+    grpcService = new PulsarGrpcService(gatewayService);
+    pulsarClient = mock(PulsarClient.class);
+    producerBuilder = spy(new ProducerBuilderImpl<>(null, null));
+    producer = mock(ProducerBase.class);
+    message = spy(new TypedMessageBuilderImpl<>(producer, Schema.BYTES));
+
+    when(gatewayService.getPulsarClient()).thenReturn(pulsarClient);
+    when(pulsarClient.newProducer()).thenReturn(producerBuilder);
+    doReturn(producer).when(producerBuilder).create();
+    when(producer.newMessage()).thenReturn(message);
+
+    ClientParameters clientParams = ClientParameters.newBuilder().setTopic(TOPIC).build();
+    Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
+  }
 
   @Test
-  void testProduceParameters() throws Exception {
+  void testProduceParameters() {
+    // Verify default values
+    callProduce();
+    ProducerConfigurationData producerBuilderConf = producerBuilder.getConf();
+    assertEquals(MessageRoutingMode.SinglePartition, producerBuilderConf.getMessageRoutingMode());
+    assertFalse(producerBuilderConf.isBatchingEnabled());
+
     String producerName = "test-producer";
     int initialSequenceId = 42;
     int sendTimeoutMillis = 43;
     int batchingMaxMessages = 44;
     int maxPendingMessages = 45;
     int batchingMaxPublishDelayMillis = 46;
-
-    GatewayService service = mock(GatewayService.class);
-    PulsarGrpcService grpcService = new PulsarGrpcService(service);
 
     ClientParameters clientParams =
         ClientParameters.newBuilder()
@@ -102,18 +140,9 @@ public class GrpcServiceTest {
             .build();
     Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
 
-    PulsarClient pulsarClient = mock(PulsarClient.class);
-    when(service.getPulsarClient()).thenReturn(pulsarClient);
-
-    ProducerBuilderImpl<byte[]> producerBuilder = spy(new ProducerBuilderImpl<>(null, null));
-    doReturn(null).when(producerBuilder).create();
-
-    when(pulsarClient.newProducer()).thenReturn(producerBuilder);
-
-    grpcService.produce(null);
+    callProduce();
 
     // Verify producer conf
-    ProducerConfigurationData producerBuilderConf = producerBuilder.getConf();
     assertFalse(producerBuilderConf.isBlockIfQueueFull());
     assertEquals(producerName, producerBuilderConf.getProducerName());
     assertEquals(initialSequenceId, producerBuilderConf.getInitialSequenceId());
@@ -129,21 +158,49 @@ public class GrpcServiceTest {
         MessageRoutingMode.RoundRobinPartition, producerBuilderConf.getMessageRoutingMode());
     assertEquals(CompressionType.LZ4, producerBuilderConf.getCompressionType());
     assertEquals("persistent://public/default/test-topic", producerBuilderConf.getTopicName());
+  }
 
-    // Verify default values
-    clientParams = ClientParameters.newBuilder().setTopic(TOPIC).build();
+  @Test
+  void testProduceInvalidProducerParameter() {
+    ClientParameters clientParams =
+        ClientParameters.newBuilder()
+            .setTopic(TOPIC)
+            .setProducerParameters(
+                ProducerParameters.newBuilder().setBatchingMaxPublishDelayMillis(UInt64Value.of(0)))
+            .build();
     Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
 
-    grpcService.produce(null);
+    try {
+      callProduce();
+      fail("Should have thrown StatusRuntimeException");
+    } catch (StatusRuntimeException e) {
+      assertEquals(e.getStatus().getCode(), Status.Code.INVALID_ARGUMENT);
+      assertTrue(e.getStatus().getDescription().startsWith("Invalid header params: "));
+    }
+  }
 
-    assertEquals(MessageRoutingMode.SinglePartition, producerBuilderConf.getMessageRoutingMode());
-    assertFalse(producerBuilderConf.isBatchingEnabled());
+  @Test
+  void testProduceOnCompleted() {
+    doReturn(CompletableFuture.completedFuture(null)).when(producer).closeAsync();
+
+    StreamObserver<ProducerRequest> requests = callProduce();
+    requests.onCompleted();
+
+    verify(producer, times(1)).closeAsync();
+  }
+
+  @Test
+  void testProduceOnError() {
+    doReturn(CompletableFuture.completedFuture(null)).when(producer).closeAsync();
+
+    StreamObserver<ProducerRequest> requests = callProduce();
+    requests.onError(new RuntimeException());
+
+    verify(producer, times(1)).closeAsync();
   }
 
   @Test
   void testProduceSend() throws Exception {
-    String context = "test-context";
-
     String payload = "test-payload";
     String propertyKey = "test-prop-key";
     String propertyValue = "test-prop-value";
@@ -153,56 +210,18 @@ public class GrpcServiceTest {
     long deliverAt = 100043;
     long deliverAfterMs = 100044;
 
-    GatewayService service = mock(GatewayService.class);
-    PulsarGrpcService grpcService = new PulsarGrpcService(service);
-
-    ClientParameters clientParams = ClientParameters.newBuilder().setTopic(TOPIC).build();
-    Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
-
-    CountDownLatch latch = new CountDownLatch(1);
-
-    PulsarClient pulsarClient = mock(PulsarClient.class);
-    when(service.getPulsarClient()).thenReturn(pulsarClient);
-
-    ProducerBuilderImpl<byte[]> producerBuilder = spy(new ProducerBuilderImpl<>(null, null));
-    when(pulsarClient.newProducer()).thenReturn(producerBuilder);
-
-    ProducerBase<byte[]> producer = mock(ProducerBase.class);
-    doReturn(producer).when(producerBuilder).create();
-
-    TypedMessageBuilderImpl<byte[]> message =
-        spy(new TypedMessageBuilderImpl<>(producer, Schema.BYTES));
-    when(producer.newMessage()).thenReturn(message);
-
     MessageId messageId = DefaultImplementation.newMessageId(1, 2, 3);
     doReturn(CompletableFuture.completedFuture(messageId)).when(message).sendAsync();
 
-    AtomicReference<ProducerAck> ackRef = new AtomicReference<>();
-
-    StreamObserver<ProducerResponse> response =
-        new StreamObserver<ProducerResponse>() {
-          @Override
-          public void onNext(ProducerResponse producerResponse) {
-            if (producerResponse.hasAck()) {
-              ackRef.set(producerResponse.getAck());
-              latch.countDown();
-            }
-          }
-
-          @Override
-          public void onError(Throwable throwable) {}
-
-          @Override
-          public void onCompleted() {}
-        };
-    StreamObserver<ProducerRequest> requests = grpcService.produce(response);
+    CompletableFuture<ProducerResponse> response = new CompletableFuture<>();
+    StreamObserver<ProducerRequest> requests = callProduce(response);
 
     ProducerRequest request =
         ProducerRequest.newBuilder()
             .setSend(
                 ProducerSend.newBuilder()
                     .setPayload(ByteString.copyFromUtf8(payload))
-                    .setContext(context)
+                    .setContext(TEST_CONTEXT)
                     .putProperties(propertyKey, propertyValue)
                     .setKey(key)
                     .addReplicationClusters(replicationCluster)
@@ -211,11 +230,10 @@ public class GrpcServiceTest {
             .build();
     requests.onNext(request);
 
-    assertTrue(latch.await(5, TimeUnit.SECONDS));
-
     // Check Ack
-    ProducerAck ack = ackRef.get();
-    assertEquals(context, ack.getContext());
+    ProducerAck ack = response.get(5, TimeUnit.SECONDS).getAck();
+    assertNotNull(ack);
+    assertEquals(TEST_CONTEXT, ack.getContext());
     assertArrayEquals(messageId.toByteArray(), ack.getMessageId().toByteArray());
 
     // Verify message properties
@@ -241,6 +259,52 @@ public class GrpcServiceTest {
   }
 
   @Test
+  void testProduceSendException() throws Exception {
+    CompletableFuture<MessageId> sendResult = new CompletableFuture<>();
+    sendResult.completeExceptionally(new PulsarClientException("error"));
+    doReturn(sendResult).when(message).sendAsync();
+
+    CompletableFuture<ProducerResponse> response = new CompletableFuture<>();
+    StreamObserver<ProducerRequest> requests = callProduce(response);
+
+    ProducerRequest request =
+        ProducerRequest.newBuilder()
+            .setSend(
+                ProducerSend.newBuilder()
+                    .setPayload(ByteString.copyFromUtf8("payload"))
+                    .setContext(TEST_CONTEXT))
+            .build();
+    requests.onNext(request);
+
+    ProducerSendError error = response.get(5, TimeUnit.SECONDS).getError();
+    assertEquals(Code.INTERNAL_VALUE, error.getStatusCode());
+    assertEquals(TEST_CONTEXT, error.getContext());
+    assertEquals("org.apache.pulsar.client.api.PulsarClientException: error", error.getErrorMsg());
+  }
+
+  @Test
+  void testProduceSchemaSerializationException() throws Exception {
+    doThrow(new SchemaSerializationException("error")).when(message).value(any());
+
+    CompletableFuture<ProducerResponse> response = new CompletableFuture<>();
+    StreamObserver<ProducerRequest> requests = callProduce(response);
+
+    ProducerRequest request =
+        ProducerRequest.newBuilder()
+            .setSend(
+                ProducerSend.newBuilder()
+                    .setPayload(ByteString.copyFromUtf8("payload"))
+                    .setContext(TEST_CONTEXT))
+            .build();
+    requests.onNext(request);
+
+    ProducerSendError error = response.get(5, TimeUnit.SECONDS).getError();
+    assertEquals(Code.INVALID_ARGUMENT_VALUE, error.getStatusCode());
+    assertEquals(TEST_CONTEXT, error.getContext());
+    assertEquals("error", error.getErrorMsg());
+  }
+
+  @Test
   void testConsumeParameters() throws Exception {
     long ackTimeout = 1042;
     int receiverQueueSize = 999;
@@ -249,9 +313,6 @@ public class GrpcServiceTest {
     String dlTopic = "test-dl-topic";
     int dlMaxRedeliverCount = 45;
     int negativeAckRedeliveryDelayMillis = 46;
-
-    GatewayService service = mock(GatewayService.class);
-    PulsarGrpcService grpcService = new PulsarGrpcService(service);
 
     ClientParameters clientParams =
         ClientParameters.newBuilder()
@@ -276,9 +337,6 @@ public class GrpcServiceTest {
                             .CONSUMER_CRYPTO_FAILURE_ACTION_DISCARD))
             .build();
     Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
-
-    PulsarClient pulsarClient = mock(PulsarClient.class);
-    when(service.getPulsarClient()).thenReturn(pulsarClient);
 
     ConsumerBuilderImpl<byte[]> consumerBuilder = spy(new ConsumerBuilderImpl<>(null, null));
     ConsumerBase<byte[]> consumer = mock(ConsumerBase.class);
@@ -325,5 +383,29 @@ public class GrpcServiceTest {
         consumerBuilderConf.getDeadLetterPolicy().getDeadLetterTopic());
     // receive queue size is the minimum value of default value (1000) and user defined value(1001)
     assertEquals(1000, consumerBuilderConf.getReceiverQueueSize());
+  }
+
+  private StreamObserver<ProducerRequest> callProduce() {
+    return callProduce(new CompletableFuture<>());
+  }
+
+  private StreamObserver<ProducerRequest> callProduce(
+      CompletableFuture<ProducerResponse> response) {
+    StreamObserver<ProducerResponse> responses =
+        new StreamObserver<ProducerResponse>() {
+          @Override
+          public void onNext(ProducerResponse producerResponse) {
+            response.complete(producerResponse);
+          }
+
+          @Override
+          public void onError(Throwable throwable) {
+            response.completeExceptionally(throwable);
+          }
+
+          @Override
+          public void onCompleted() {}
+        };
+    return grpcService.produce(responses);
   }
 }
