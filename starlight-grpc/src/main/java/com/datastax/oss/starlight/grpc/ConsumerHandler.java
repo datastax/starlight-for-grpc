@@ -24,6 +24,7 @@ import com.datastax.oss.starlight.grpc.proto.ConsumerNack;
 import com.datastax.oss.starlight.grpc.proto.ConsumerParameters;
 import com.datastax.oss.starlight.grpc.proto.ConsumerRequest;
 import com.datastax.oss.starlight.grpc.proto.ConsumerResponse;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.protobuf.ByteString;
@@ -39,7 +40,6 @@ import org.apache.pulsar.client.api.DeadLetterPolicy;
 import org.apache.pulsar.client.api.DeadLetterPolicy.DeadLetterPolicyBuilder;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.PulsarClient;
-import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.PulsarClientException.AlreadyClosedException;
 import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.client.impl.ConsumerBuilderImpl;
@@ -114,7 +114,7 @@ public class ConsumerHandler extends AbstractGrpcHandler {
             default:
               break;
           }
-        } catch (IOException e) {
+        } catch (Exception e) {
           synchronized (messageStreamObserver) {
             messageStreamObserver.onError(e);
           }
@@ -159,7 +159,7 @@ public class ConsumerHandler extends AbstractGrpcHandler {
     }
   }
 
-  private void handleUnsubscribe() throws PulsarClientException {
+  private void handleUnsubscribe() {
     if (log.isDebugEnabled()) {
       log.debug(
           "[{}/{}] Received unsubscribe request from {} ",
@@ -400,5 +400,10 @@ public class ConsumerHandler extends AbstractGrpcHandler {
                 return null;
               });
     }
+  }
+
+  @VisibleForTesting
+  Cache<ByteString, MessageId> getMessageIdCache() {
+    return messageIdCache;
   }
 }
