@@ -286,6 +286,10 @@ public class ConsumerHandler extends AbstractGrpcHandler {
                     remoteAddress,
                     exception.getMessage());
               }
+              synchronized (messageStreamObserver) {
+                messageStreamObserver.onError(exception);
+              }
+              close();
               return null;
             });
   }

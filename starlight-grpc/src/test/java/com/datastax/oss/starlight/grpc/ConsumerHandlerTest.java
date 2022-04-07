@@ -16,8 +16,10 @@
 package com.datastax.oss.starlight.grpc;
 
 import static com.datastax.oss.starlight.grpc.Constants.CLIENT_PARAMS_CTX_KEY;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.doReturn;
@@ -33,6 +35,7 @@ import com.datastax.oss.starlight.grpc.proto.ClientParameters;
 import com.datastax.oss.starlight.grpc.proto.ConsumerAck;
 import com.datastax.oss.starlight.grpc.proto.ConsumerEndOfTopic;
 import com.datastax.oss.starlight.grpc.proto.ConsumerEndOfTopicResponse;
+import com.datastax.oss.starlight.grpc.proto.ConsumerMessage;
 import com.datastax.oss.starlight.grpc.proto.ConsumerNack;
 import com.datastax.oss.starlight.grpc.proto.ConsumerParameters;
 import com.datastax.oss.starlight.grpc.proto.ConsumerRequest;
@@ -46,9 +49,18 @@ import io.grpc.Context;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.apache.pulsar.client.api.ConsumerCryptoFailureAction;
+import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.SubscriptionType;
@@ -56,12 +68,14 @@ import org.apache.pulsar.client.impl.ConsumerBase;
 import org.apache.pulsar.client.impl.ConsumerBuilderImpl;
 import org.apache.pulsar.client.impl.MessageIdImpl;
 import org.apache.pulsar.client.impl.conf.ConsumerConfigurationData;
+import org.apache.pulsar.common.api.EncryptionContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class ConsumerHandlerTest {
   private static final String TOPIC = "test-topic";
-  public static final String TEST_SUBSCRIPTION = "test-subscription";
+  private static final String TEST_SUBSCRIPTION = "test-subscription";
+  private static final MessageId TEST_MESSAGE_ID = new MessageIdImpl(1, 2, 3);
 
   private GatewayService gatewayService;
   private ConsumerBuilderImpl<byte[]> consumerBuilder;
@@ -74,6 +88,7 @@ public class ConsumerHandlerTest {
     consumerBuilder = spy(new ConsumerBuilderImpl<>(null, null));
     consumer = mock(ConsumerBase.class);
 
+    when(gatewayService.getExecutor()).thenReturn(Executors.newSingleThreadScheduledExecutor());
     when(gatewayService.getPulsarClient()).thenReturn(pulsarClient);
     when(pulsarClient.newConsumer()).thenReturn(consumerBuilder);
     doReturn(consumer).when(consumerBuilder).subscribe();
@@ -90,7 +105,7 @@ public class ConsumerHandlerTest {
   }
 
   @Test
-  void testParameters() throws Exception {
+  void testParameters() {
     long ackTimeout = 1042;
     int receiverQueueSize = 999;
     String consumerName = "test-consumer";
@@ -232,66 +247,60 @@ public class ConsumerHandlerTest {
 
   @Test
   void testAckNotInMap() {
-    MessageIdImpl messageId = new MessageIdImpl(1, 2, 3);
-
     StreamObserver<ConsumerRequest> requests = callConsume();
 
     ConsumerAck.Builder ack =
-        ConsumerAck.newBuilder().setMessageId(ByteString.copyFrom(messageId.toByteArray()));
+        ConsumerAck.newBuilder().setMessageId(ByteString.copyFrom(TEST_MESSAGE_ID.toByteArray()));
     requests.onNext(ConsumerRequest.newBuilder().setAck(ack).build());
 
-    verify(consumer, times(1)).acknowledgeAsync(messageId);
+    verify(consumer, times(1)).acknowledgeAsync(TEST_MESSAGE_ID);
   }
 
   @Test
   void testAckInMap() {
-    MessageIdImpl inCacheMessageId = new MessageIdImpl(1, 2, 3);
-    MessageIdImpl ackMessageId = new MessageIdImpl(4, 5, 6);
+    MessageId ackMessageId = new MessageIdImpl(4, 5, 6);
 
     ConsumerHandler consumerHandler = newTestConsumerHandler(new CompletableFuture<>());
     consumerHandler
         .getMessageIdCache()
-        .put(ByteString.copyFrom(ackMessageId.toByteArray()), inCacheMessageId);
+        .put(ByteString.copyFrom(ackMessageId.toByteArray()), TEST_MESSAGE_ID);
     StreamObserver<ConsumerRequest> requests = consumerHandler.consume();
 
     ConsumerAck.Builder ack =
         ConsumerAck.newBuilder().setMessageId(ByteString.copyFrom(ackMessageId.toByteArray()));
     requests.onNext(ConsumerRequest.newBuilder().setAck(ack).build());
 
-    verify(consumer, times(1)).acknowledgeAsync(inCacheMessageId);
+    verify(consumer, times(1)).acknowledgeAsync(TEST_MESSAGE_ID);
     verify(consumer, never()).acknowledgeAsync(ackMessageId);
     assertEquals(0, consumerHandler.getMessageIdCache().size());
   }
 
   @Test
   void testNackNotInMap() {
-    MessageIdImpl messageId = new MessageIdImpl(1, 2, 3);
-
     StreamObserver<ConsumerRequest> requests = callConsume();
 
     ConsumerNack.Builder ack =
-        ConsumerNack.newBuilder().setMessageId(ByteString.copyFrom(messageId.toByteArray()));
+        ConsumerNack.newBuilder().setMessageId(ByteString.copyFrom(TEST_MESSAGE_ID.toByteArray()));
     requests.onNext(ConsumerRequest.newBuilder().setNack(ack).build());
 
-    verify(consumer, times(1)).negativeAcknowledge(messageId);
+    verify(consumer, times(1)).negativeAcknowledge(TEST_MESSAGE_ID);
   }
 
   @Test
   void testNackInMap() {
-    MessageIdImpl inCacheMessageId = new MessageIdImpl(1, 2, 3);
-    MessageIdImpl ackMessageId = new MessageIdImpl(4, 5, 6);
+    MessageId ackMessageId = new MessageIdImpl(4, 5, 6);
 
     ConsumerHandler consumerHandler = newTestConsumerHandler(new CompletableFuture<>());
     consumerHandler
         .getMessageIdCache()
-        .put(ByteString.copyFrom(ackMessageId.toByteArray()), inCacheMessageId);
+        .put(ByteString.copyFrom(ackMessageId.toByteArray()), TEST_MESSAGE_ID);
     StreamObserver<ConsumerRequest> requests = consumerHandler.consume();
 
     ConsumerNack.Builder nack =
         ConsumerNack.newBuilder().setMessageId(ByteString.copyFrom(ackMessageId.toByteArray()));
     requests.onNext(ConsumerRequest.newBuilder().setNack(nack).build());
 
-    verify(consumer, times(1)).negativeAcknowledge(inCacheMessageId);
+    verify(consumer, times(1)).negativeAcknowledge(TEST_MESSAGE_ID);
     verify(consumer, never()).negativeAcknowledge(ackMessageId);
     assertEquals(0, consumerHandler.getMessageIdCache().size());
   }
@@ -338,6 +347,124 @@ public class ConsumerHandlerTest {
     verify(consumer, times(1)).closeAsync();
   }
 
+  @Test
+  void testReceiveMessage() throws Exception {
+    String payload = "test-message";
+    Map<String, String> properties = new LinkedHashMap<>();
+    properties.put("test-property-key", "test-property-value");
+    long publishTime = 42;
+    long eventTime = 43;
+    String key = "test-key";
+
+    TestMessage message =
+        new TestMessage(TEST_MESSAGE_ID, payload, properties, publishTime, eventTime, key);
+
+    when(consumer.receiveAsync()).thenReturn(CompletableFuture.completedFuture(message));
+
+    LinkedBlockingQueue<ConsumerResponse> responses = new LinkedBlockingQueue<>();
+
+    StreamObserver<ConsumerResponse> responseStreamObserver =
+        new StreamObserver<ConsumerResponse>() {
+          @Override
+          public void onNext(ConsumerResponse consumerResponse) {
+            responses.add(consumerResponse);
+          }
+
+          @Override
+          public void onError(Throwable throwable) {
+            throw new RuntimeException(throwable);
+          }
+
+          @Override
+          public void onCompleted() {}
+        };
+    new ConsumerHandler(gatewayService, responseStreamObserver).consume();
+
+    ConsumerResponse consumerResponse = responses.poll(5, TimeUnit.SECONDS);
+    assertNotNull(consumerResponse);
+    ConsumerMessage consumerMessage = consumerResponse.getMessage();
+    assertNotNull(consumerMessage);
+    assertArrayEquals(TEST_MESSAGE_ID.toByteArray(), consumerMessage.getMessageId().toByteArray());
+    assertEquals(payload, consumerMessage.getPayload().toStringUtf8());
+    assertEquals(1, consumerMessage.getPropertiesCount());
+    assertEquals("test-property-value", consumerMessage.getPropertiesOrThrow("test-property-key"));
+    assertEquals(publishTime, consumerMessage.getPublishTime());
+    assertEquals(eventTime, consumerMessage.getEventTime());
+    assertEquals(key, consumerMessage.getKey());
+
+    // Check that we receive more messages
+    for (int i = 0; i < 100; i++) {
+      consumerResponse = responses.poll(5, TimeUnit.SECONDS);
+      assertNotNull(consumerResponse);
+      assertTrue(consumerResponse.hasMessage());
+    }
+  }
+
+  @Test
+  void testReceiveMessageReceiveQueue() throws Exception {
+    ClientParameters clientParams =
+        ClientParameters.newBuilder()
+            .setTopic(TOPIC)
+            .setConsumerParameters(
+                ConsumerParameters.newBuilder()
+                    .setSubscription(TEST_SUBSCRIPTION)
+                    .setReceiverQueueSize(UInt32Value.of(0)))
+            .build();
+    Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
+
+    TestMessage message = new TestMessage(TEST_MESSAGE_ID);
+    when(consumer.receiveAsync()).thenReturn(CompletableFuture.completedFuture(message));
+
+    LinkedBlockingQueue<ConsumerResponse> responses = new LinkedBlockingQueue<>();
+
+    StreamObserver<ConsumerResponse> responseStreamObserver =
+        new StreamObserver<ConsumerResponse>() {
+          @Override
+          public void onNext(ConsumerResponse consumerResponse) {
+            responses.add(consumerResponse);
+          }
+
+          @Override
+          public void onError(Throwable throwable) {
+            throw new RuntimeException(throwable);
+          }
+
+          @Override
+          public void onCompleted() {}
+        };
+    StreamObserver<ConsumerRequest> requests =
+        new ConsumerHandler(gatewayService, responseStreamObserver).consume();
+
+    ConsumerResponse consumerResponse = responses.poll(1, TimeUnit.SECONDS);
+    assertNotNull(consumerResponse);
+    assertNotNull(consumerResponse.getMessage());
+
+    assertNull(responses.poll(1, TimeUnit.SECONDS));
+
+    requests.onNext(
+        ConsumerRequest.newBuilder()
+            .setAck(
+                ConsumerAck.newBuilder()
+                    .setMessageId(ByteString.copyFrom(TEST_MESSAGE_ID.toByteArray())))
+            .build());
+
+    consumerResponse = responses.poll(1, TimeUnit.SECONDS);
+    assertNotNull(consumerResponse);
+    assertNotNull(consumerResponse.getMessage());
+  }
+
+  @Test
+  void testReceiveMessageException() {
+    CompletableFuture<Message<byte[]>> messageException = new CompletableFuture<>();
+    messageException.completeExceptionally(new PulsarClientException("error"));
+    when(consumer.receiveAsync()).thenReturn(messageException);
+
+    CompletableFuture<ConsumerResponse> response = new CompletableFuture<>();
+    callConsume(response);
+
+    assertTrue(response.isCompletedExceptionally());
+  }
+
   private StreamObserver<ConsumerRequest> callConsume() {
     return callConsume(new CompletableFuture<>());
   }
@@ -364,5 +491,151 @@ public class ConsumerHandlerTest {
           public void onCompleted() {}
         };
     return new ConsumerHandler(gatewayService, responses);
+  }
+
+  private static class TestMessage implements Message<byte[]> {
+    private final MessageId messageId;
+    private String payload = "";
+    private Map<String, String> properties = new HashMap<>();
+    private long publishTime;
+    private long eventTime;
+    private String key = "";
+
+    public TestMessage(MessageId messageId) {
+      this.messageId = messageId;
+    }
+
+    private TestMessage(
+        MessageId messageId,
+        String payload,
+        Map<String, String> properties,
+        long publishTime,
+        long eventTime,
+        String key) {
+      this.messageId = messageId;
+      this.payload = payload;
+      this.properties = properties;
+      this.publishTime = publishTime;
+      this.eventTime = eventTime;
+      this.key = key;
+    }
+
+    @Override
+    public Map<String, String> getProperties() {
+      return properties;
+    }
+
+    @Override
+    public boolean hasProperty(String name) {
+      return false;
+    }
+
+    @Override
+    public String getProperty(String name) {
+      return null;
+    }
+
+    @Override
+    public byte[] getData() {
+      return payload.getBytes(StandardCharsets.UTF_8);
+    }
+
+    @Override
+    public int size() {
+      return 0;
+    }
+
+    @Override
+    public byte[] getValue() {
+      return null;
+    }
+
+    @Override
+    public MessageId getMessageId() {
+      return messageId;
+    }
+
+    @Override
+    public long getPublishTime() {
+      return publishTime;
+    }
+
+    @Override
+    public long getEventTime() {
+      return eventTime;
+    }
+
+    @Override
+    public long getSequenceId() {
+      return 0;
+    }
+
+    @Override
+    public String getProducerName() {
+      return null;
+    }
+
+    @Override
+    public boolean hasKey() {
+      return true;
+    }
+
+    @Override
+    public String getKey() {
+      return key;
+    }
+
+    @Override
+    public boolean hasBase64EncodedKey() {
+      return false;
+    }
+
+    @Override
+    public byte[] getKeyBytes() {
+      return new byte[0];
+    }
+
+    @Override
+    public boolean hasOrderingKey() {
+      return false;
+    }
+
+    @Override
+    public byte[] getOrderingKey() {
+      return new byte[0];
+    }
+
+    @Override
+    public String getTopicName() {
+      return null;
+    }
+
+    @Override
+    public Optional<EncryptionContext> getEncryptionCtx() {
+      return Optional.empty();
+    }
+
+    @Override
+    public int getRedeliveryCount() {
+      return 0;
+    }
+
+    @Override
+    public byte[] getSchemaVersion() {
+      return new byte[0];
+    }
+
+    @Override
+    public boolean isReplicated() {
+      return false;
+    }
+
+    @Override
+    public String getReplicatedFrom() {
+      return null;
+    }
+
+    @Override
+    public void release() {}
   }
 }
