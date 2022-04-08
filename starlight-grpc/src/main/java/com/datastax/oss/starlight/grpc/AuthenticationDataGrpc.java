@@ -15,9 +15,11 @@
  */
 package com.datastax.oss.starlight.grpc;
 
+import static io.grpc.Metadata.ASCII_STRING_MARSHALLER;
+
+import io.grpc.Metadata;
 import java.net.SocketAddress;
 import java.security.cert.Certificate;
-import java.util.Map;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
 import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
@@ -26,13 +28,13 @@ public class AuthenticationDataGrpc implements AuthenticationDataSource {
 
   private final SocketAddress remoteAddress;
   private final SSLSession sslSession;
-  private final Map<String, String> authHeaders;
+  private final Metadata metadata;
 
   public AuthenticationDataGrpc(
-      SocketAddress remoteAddress, SSLSession sslSession, Map<String, String> authHeaders) {
+      SocketAddress remoteAddress, SSLSession sslSession, Metadata metadata) {
     this.remoteAddress = remoteAddress;
     this.sslSession = sslSession;
-    this.authHeaders = authHeaders;
+    this.metadata = metadata;
   }
 
   @Override
@@ -56,7 +58,7 @@ public class AuthenticationDataGrpc implements AuthenticationDataSource {
 
   @Override
   public String getHttpHeader(String name) {
-    return authHeaders.get(name);
+    return metadata.get(Metadata.Key.of(name, ASCII_STRING_MARSHALLER));
   }
 
   @Override

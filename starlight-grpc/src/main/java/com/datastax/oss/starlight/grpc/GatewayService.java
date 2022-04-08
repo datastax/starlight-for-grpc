@@ -89,7 +89,7 @@ public class GatewayService {
     List<ServerInterceptor> interceptors = new ArrayList<>();
     interceptors.add(new GrpcProxyServerInterceptor());
     if (config.isAuthenticationEnabled()) {
-      interceptors.add(new AuthenticationServerInterceptor(authenticationService));
+      interceptors.add(new AuthenticationInterceptor(authenticationService));
     }
 
     String bindAddress =

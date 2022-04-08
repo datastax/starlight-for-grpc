@@ -11,6 +11,7 @@ import "google/protobuf/wrappers.proto";
 service Pulsar {
   rpc Produce(stream ProducerRequest) returns (stream ProducerResponse);
   rpc Consume(stream ConsumerRequest) returns (stream ConsumerResponse);
+  rpc Ping(google.protobuf.StringValue) returns (google.protobuf.StringValue);
 }
 
 message ProducerRequest {

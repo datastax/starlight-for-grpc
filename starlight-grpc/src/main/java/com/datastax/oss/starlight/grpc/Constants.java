@@ -29,7 +29,7 @@ public class Constants {
   public static final Metadata.Key<byte[]> CLIENT_PARAMS_METADATA_KEY =
       Metadata.Key.of("pulsar-client-params-bin", BINARY_BYTE_MARSHALLER);
   public static final Metadata.Key<String> AUTHORIZATION_METADATA_KEY =
-      Metadata.Key.of("Authorization", ASCII_STRING_MARSHALLER);
+      Metadata.Key.of("authorization", ASCII_STRING_MARSHALLER);
   public static final Metadata.Key<String> AUTH_METHOD_METADATA_KEY =
       Metadata.Key.of("pulsar-auth-method-name", ASCII_STRING_MARSHALLER);
 

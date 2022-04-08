@@ -17,14 +17,11 @@ package com.datastax.oss.starlight.grpc;
 
 import static com.datastax.oss.starlight.grpc.Constants.AUTHENTICATION_DATA_CTX_KEY;
 import static com.datastax.oss.starlight.grpc.Constants.AUTHENTICATION_ROLE_CTX_KEY;
-import static com.datastax.oss.starlight.grpc.Constants.AUTHORIZATION_METADATA_KEY;
 import static com.datastax.oss.starlight.grpc.Constants.AUTH_METHOD_METADATA_KEY;
 
 import io.grpc.*;
 import java.net.SocketAddress;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 import javax.naming.AuthenticationException;
 import javax.net.ssl.SSLSession;
 import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
@@ -33,13 +30,13 @@ import org.apache.pulsar.broker.authentication.AuthenticationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class AuthenticationServerInterceptor implements ServerInterceptor {
+public class AuthenticationInterceptor implements ServerInterceptor {
 
-  private static final Logger LOG = LoggerFactory.getLogger(AuthenticationServerInterceptor.class);
+  private static final Logger LOG = LoggerFactory.getLogger(AuthenticationInterceptor.class);
 
   private final AuthenticationService authenticationService;
 
-  public AuthenticationServerInterceptor(AuthenticationService authenticationService) {
+  public AuthenticationInterceptor(AuthenticationService authenticationService) {
     this.authenticationService = authenticationService;
   }
 
@@ -52,24 +49,21 @@ public class AuthenticationServerInterceptor implements ServerInterceptor {
 
     SocketAddress socketAddress = serverCall.getAttributes().get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR);
     try {
-      Map<String, String> authHeaders = new HashMap<>();
-      if (metadata.containsKey(AUTHORIZATION_METADATA_KEY)) {
-        authHeaders.put("Authorization", metadata.get(AUTHORIZATION_METADATA_KEY));
-      }
       SSLSession sslSession = serverCall.getAttributes().get(Grpc.TRANSPORT_ATTR_SSL_SESSION);
       AuthenticationDataSource authData =
-          new AuthenticationDataGrpc(socketAddress, sslSession, authHeaders);
+          new AuthenticationDataGrpc(socketAddress, sslSession, metadata);
       String authMethodName = metadata.get(AUTH_METHOD_METADATA_KEY);
       String role = authenticateData(authData, authMethodName);
       ctx =
           ctx.withValue(AUTHENTICATION_ROLE_CTX_KEY, role)
               .withValue(AUTHENTICATION_DATA_CTX_KEY, authData);
       if (LOG.isDebugEnabled()) {
-        LOG.debug("[{}] Authenticated HTTP request with role {}", socketAddress, role);
+        LOG.debug("[{}] Authenticated gRPC request with role {}", socketAddress, role);
       }
     } catch (AuthenticationException e) {
-      LOG.warn("[{}] Failed to authenticate HTTP request: {}", socketAddress, e.getMessage());
-      throw Status.UNAUTHENTICATED.withDescription(e.getMessage()).asRuntimeException();
+      LOG.warn("[{}] Failed to authenticate gRPC request: {}", socketAddress, e.getMessage());
+      serverCall.close(Status.UNAUTHENTICATED.withDescription(e.getMessage()), new Metadata());
+      return new ServerCall.Listener<ReqT>() {};
     }
 
     return Contexts.interceptCall(ctx, serverCall, metadata, serverCallHandler);

@@ -20,6 +20,7 @@ import com.datastax.oss.starlight.grpc.proto.ConsumerResponse;
 import com.datastax.oss.starlight.grpc.proto.ProducerRequest;
 import com.datastax.oss.starlight.grpc.proto.ProducerResponse;
 import com.datastax.oss.starlight.grpc.proto.PulsarGrpc;
+import com.google.protobuf.StringValue;
 import io.grpc.stub.StreamObserver;
 
 public class PulsarGrpcService extends PulsarGrpc.PulsarImplBase {
@@ -40,5 +41,11 @@ public class PulsarGrpcService extends PulsarGrpc.PulsarImplBase {
   public StreamObserver<ConsumerRequest> consume(StreamObserver<ConsumerResponse> streamObserver) {
     ConsumerHandler handler = new ConsumerHandler(service, streamObserver);
     return handler.consume();
+  }
+
+  @Override
+  public void ping(StringValue request, StreamObserver<StringValue> responseObserver) {
+    responseObserver.onNext(request);
+    responseObserver.onCompleted();
   }
 }
