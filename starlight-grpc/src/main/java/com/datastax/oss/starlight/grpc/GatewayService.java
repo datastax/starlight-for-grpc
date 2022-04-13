@@ -20,14 +20,16 @@ import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import io.grpc.Server;
 import io.grpc.ServerInterceptor;
 import io.grpc.ServerInterceptors;
+import io.grpc.netty.GrpcSslContexts;
 import io.grpc.netty.NettyServerBuilder;
-import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -39,7 +41,6 @@ import org.apache.pulsar.broker.resources.PulsarResources;
 import org.apache.pulsar.client.api.ClientBuilder;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.common.policies.data.ClusterData;
-import org.apache.pulsar.common.util.SecurityUtility;
 import org.apache.pulsar.metadata.api.MetadataStoreException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,20 +109,44 @@ public class GatewayService {
 
     Integer grpcServicePortTls = config.getGrpcServicePortTls();
     if (grpcServicePortTls != null) {
-      SslContext sslContext =
-          SecurityUtility.createNettySslContextForServer(
-              config.isTlsAllowInsecureConnection(),
-              config.getTlsTrustCertsFilePath(),
-              config.getTlsCertificateFilePath(),
-              config.getTlsKeyFilePath(),
-              config.getTlsCiphers(),
-              config.getTlsProtocols(),
-              config.isTlsRequireTrustedClientCertOnConnect());
+      SslContextBuilder sslContext;
+      if (config.isTlsEnabledWithKeyStore()) {
+        KeyStoreSSLContext keyStoreSSLContext =
+            new KeyStoreSSLContext(
+                KeyStoreSSLContext.Mode.SERVER,
+                config.getTlsProvider(),
+                config.getTlsKeyStoreType(),
+                config.getTlsKeyStore(),
+                config.getTlsKeyStorePassword(),
+                config.isTlsAllowInsecureConnection(),
+                config.getTlsTrustStoreType(),
+                config.getTlsTrustStore(),
+                config.getTlsTrustStorePassword(),
+                config.isTlsRequireTrustedClientCertOnConnect(),
+                config.getTlsCiphers(),
+                config.getTlsProtocols());
 
+        sslContext = keyStoreSSLContext.createServerSslContextBuider();
+        if (sslContext == null) {
+          LOG.error("Couldn't start gRPC TLS service due to missing keystore param");
+          return;
+        }
+      } else {
+        sslContext =
+            SecurityUtility.createNettySslContextForServer(
+                null,
+                config.isTlsAllowInsecureConnection(),
+                config.getTlsTrustCertsFilePath(),
+                config.getTlsCertificateFilePath(),
+                config.getTlsKeyFilePath(),
+                config.getTlsCiphers(),
+                config.getTlsProtocols(),
+                config.isTlsRequireTrustedClientCertOnConnect());
+      }
       tlsServer =
           NettyServerBuilder.forAddress(new InetSocketAddress(bindAddress, grpcServicePortTls))
               .addService(ServerInterceptors.intercept(pulsarGrpcService, interceptors))
-              .sslContext(sslContext)
+              .sslContext(GrpcSslContexts.configure(sslContext).build())
               // .directExecutor()
               .build()
               .start();
@@ -230,5 +255,21 @@ public class GatewayService {
 
   public AuthorizationService getAuthorizationService() {
     return authorizationService;
+  }
+
+  public Optional<Integer> getListenPort() {
+    if (server != null) {
+      return Optional.of(server.getPort());
+    } else {
+      return Optional.empty();
+    }
+  }
+
+  public Optional<Integer> getListenPortTLS() {
+    if (tlsServer != null) {
+      return Optional.of(tlsServer.getPort());
+    } else {
+      return Optional.empty();
+    }
   }
 }

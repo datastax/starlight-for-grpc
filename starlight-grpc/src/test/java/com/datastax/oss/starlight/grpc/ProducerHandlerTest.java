@@ -156,6 +156,30 @@ public class ProducerHandlerTest {
   }
 
   @Test
+  void testMissingClientParameters() {
+    Context.current().detach(Context.ROOT);
+    try {
+      callProduce();
+      fail("Should have thrown IllegalArgumentException");
+    } catch (IllegalArgumentException e) {
+      assertEquals("Missing client parameters", e.getMessage());
+    }
+  }
+
+  @Test
+  void testMissingTopic() {
+    Context.current()
+        .withValue(CLIENT_PARAMS_CTX_KEY, ClientParameters.getDefaultInstance())
+        .attach();
+    try {
+      callProduce();
+      fail("Should have thrown IllegalArgumentException");
+    } catch (IllegalArgumentException e) {
+      assertEquals("Missing topic parameter", e.getMessage());
+    }
+  }
+
+  @Test
   void testInvalidParameter() {
     ClientParameters clientParams =
         ClientParameters.newBuilder()
@@ -169,7 +193,7 @@ public class ProducerHandlerTest {
       callProduce();
       fail("Should have thrown StatusRuntimeException");
     } catch (StatusRuntimeException e) {
-      assertEquals(e.getStatus().getCode(), Status.Code.INVALID_ARGUMENT);
+      assertEquals(Status.Code.INVALID_ARGUMENT, e.getStatus().getCode());
       assertTrue(e.getStatus().getDescription().startsWith("Invalid header params: "));
     }
   }
@@ -181,7 +205,7 @@ public class ProducerHandlerTest {
       callProduce();
       fail("Should have thrown StatusRuntimeException");
     } catch (StatusRuntimeException e) {
-      assertEquals(e.getStatus().getCode(), Status.Code.ABORTED);
+      assertEquals(Status.Code.ABORTED, e.getStatus().getCode());
       assertEquals("Failed to create producer: timeout", e.getStatus().getDescription());
     }
   }
@@ -260,8 +284,8 @@ public class ProducerHandlerTest {
             .build();
     requests.onNext(request);
     assertEquals(
-        message.getMetadataBuilder().getDeliverAtTime() - System.currentTimeMillis(),
         deliverAfterMs,
+        message.getMetadataBuilder().getDeliverAtTime() - System.currentTimeMillis(),
         5);
   }
 
@@ -335,7 +359,7 @@ public class ProducerHandlerTest {
       callProduce();
       fail("Should have thrown StatusRuntimeException");
     } catch (StatusRuntimeException e) {
-      assertEquals(e.getStatus().getCode(), Status.Code.PERMISSION_DENIED);
+      assertEquals(Status.Code.PERMISSION_DENIED, e.getStatus().getCode());
       assertEquals("Failed to create producer: Not authorized", e.getStatus().getDescription());
     }
   }
@@ -353,7 +377,7 @@ public class ProducerHandlerTest {
       callProduce();
       fail("Should have thrown StatusRuntimeException");
     } catch (StatusRuntimeException e) {
-      assertEquals(e.getStatus().getCode(), Status.Code.ABORTED);
+      assertEquals(Status.Code.ABORTED, e.getStatus().getCode());
       assertEquals("Failed to create producer: timeout", e.getStatus().getDescription());
     }
   }

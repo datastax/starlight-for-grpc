@@ -185,6 +185,30 @@ public class ConsumerHandlerTest {
   }
 
   @Test
+  void testMissingClientParameters() {
+    Context.current().detach(Context.ROOT);
+    try {
+      callConsume();
+      fail("Should have thrown IllegalArgumentException");
+    } catch (IllegalArgumentException e) {
+      assertEquals("Missing client parameters", e.getMessage());
+    }
+  }
+
+  @Test
+  void testMissingTopic() {
+    Context.current()
+        .withValue(CLIENT_PARAMS_CTX_KEY, ClientParameters.getDefaultInstance())
+        .attach();
+    try {
+      callConsume();
+      fail("Should have thrown IllegalArgumentException");
+    } catch (IllegalArgumentException e) {
+      assertEquals("Missing topic parameter", e.getMessage());
+    }
+  }
+
+  @Test
   void testEmptySubscriptionParameter() {
     ClientParameters clientParams = ClientParameters.newBuilder().setTopic(TOPIC).build();
     Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();

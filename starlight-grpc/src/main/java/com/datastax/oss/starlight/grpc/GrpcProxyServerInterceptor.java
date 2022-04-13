@@ -21,6 +21,7 @@ import static com.datastax.oss.starlight.grpc.Constants.REMOTE_ADDRESS_CTX_KEY;
 import static com.google.common.base.Preconditions.checkArgument;
 
 import com.datastax.oss.starlight.grpc.proto.ClientParameters;
+import com.google.protobuf.InvalidProtocolBufferException;
 import io.grpc.Context;
 import io.grpc.Contexts;
 import io.grpc.Grpc;
@@ -41,15 +42,16 @@ public class GrpcProxyServerInterceptor implements ServerInterceptor {
       ServerCallHandler<ReqT, RespT> serverCallHandler) {
     Context ctx = Context.current();
 
-    try {
-      ClientParameters params =
-          ClientParameters.parseFrom(metadata.get(CLIENT_PARAMS_METADATA_KEY));
-      checkArgument(!params.getTopic().isEmpty(), "Empty topic name");
-      ctx = ctx.withValue(CLIENT_PARAMS_CTX_KEY, params);
-    } catch (Exception e) {
-      throw Status.INVALID_ARGUMENT
-          .withDescription("Invalid stream metadata: " + e.getMessage())
-          .asRuntimeException(metadata);
+    if (metadata.containsKey(CLIENT_PARAMS_METADATA_KEY)) {
+      try {
+        ClientParameters params =
+            ClientParameters.parseFrom(metadata.get(CLIENT_PARAMS_METADATA_KEY));
+        checkArgument(!params.getTopic().isEmpty(), "Empty topic name");
+        ctx = ctx.withValue(CLIENT_PARAMS_CTX_KEY, params);
+      } catch (InvalidProtocolBufferException e) {
+        serverCall.close(Status.INVALID_ARGUMENT.withDescription(e.getMessage()), new Metadata());
+        return new ServerCall.Listener<ReqT>() {};
+      }
     }
 
     SocketAddress socketAddress = serverCall.getAttributes().get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR);

@@ -42,6 +42,7 @@
     <maven.compiler.target>8</maven.compiler.target>
     <pulsar.groupId>com.datastax.oss</pulsar.groupId>
     <pulsar.version>2.8.0.1.1.19</pulsar.version>
+    <curator.version>5.1.0</curator.version>
     <os-maven-plugin.version>1.4.1.Final</os-maven-plugin.version>
     <protobuf3.version>3.16.1</protobuf3.version>
     <protoc3.version>${protobuf3.version}</protoc3.version>
@@ -81,6 +82,18 @@
         <artifactId>junit-jupiter</artifactId>
         <version>${junit.version}</version>
         <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.curator</groupId>
+        <artifactId>curator-test</artifactId>
+        <version>${curator.version}</version>
+        <scope>test</scope>
+        <exclusions>
+          <exclusion>
+            <groupId>org.apache.zookeeper</groupId>
+            <artifactId>*</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
     </dependencies>
   </dependencyManagement>

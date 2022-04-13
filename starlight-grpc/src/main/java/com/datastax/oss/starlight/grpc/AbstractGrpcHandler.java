@@ -19,6 +19,7 @@ import static com.datastax.oss.starlight.grpc.Constants.AUTHENTICATION_DATA_CTX_
 import static com.datastax.oss.starlight.grpc.Constants.AUTHENTICATION_ROLE_CTX_KEY;
 import static com.datastax.oss.starlight.grpc.Constants.CLIENT_PARAMS_CTX_KEY;
 import static com.datastax.oss.starlight.grpc.Constants.REMOTE_ADDRESS_CTX_KEY;
+import static com.google.common.base.Preconditions.checkArgument;
 
 import com.datastax.oss.starlight.grpc.proto.ClientParameters;
 import io.grpc.Status;
@@ -44,8 +45,10 @@ public abstract class AbstractGrpcHandler implements Closeable {
 
   public AbstractGrpcHandler(GatewayService service) {
     this.service = service;
-    this.topic = TopicName.get(CLIENT_PARAMS_CTX_KEY.get().getTopic());
     this.clientParameters = CLIENT_PARAMS_CTX_KEY.get();
+    checkArgument(this.clientParameters != null, "Missing client parameters");
+    checkArgument(!this.clientParameters.getTopic().isEmpty(), "Missing topic parameter");
+    this.topic = TopicName.get(this.clientParameters.getTopic());
     this.remoteAddress = REMOTE_ADDRESS_CTX_KEY.get();
     this.authenticationRole = AUTHENTICATION_ROLE_CTX_KEY.get();
     this.authenticationData = AUTHENTICATION_DATA_CTX_KEY.get();
