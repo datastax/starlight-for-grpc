@@ -52,9 +52,7 @@ public class ProducerHandler extends AbstractGrpcHandler {
     ProducerParameters parameters = clientParameters.getProducerParameters();
 
     try {
-      // TODO: make checkAuth async
       checkAuth();
-      // TODO: create producer async
       this.producer =
           getProducerBuilder(parameters, service.getPulsarClient())
               .topic(topic.toString())

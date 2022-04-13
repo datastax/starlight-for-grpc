@@ -15,6 +15,7 @@
  */
 package com.datastax.oss.starlight.grpc;
 
+import static com.datastax.oss.starlight.grpc.Constants.AUTHENTICATION_ROLE_CTX_KEY;
 import static com.datastax.oss.starlight.grpc.Constants.CLIENT_PARAMS_CTX_KEY;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -52,6 +54,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import org.apache.pulsar.broker.authorization.AuthorizationService;
 import org.apache.pulsar.client.api.CompressionType;
 import org.apache.pulsar.client.api.HashingScheme;
 import org.apache.pulsar.client.api.MessageId;
@@ -66,11 +69,13 @@ import org.apache.pulsar.client.impl.ProducerBuilderImpl;
 import org.apache.pulsar.client.impl.TypedMessageBuilderImpl;
 import org.apache.pulsar.client.impl.conf.ProducerConfigurationData;
 import org.apache.pulsar.client.internal.DefaultImplementation;
+import org.apache.pulsar.common.naming.TopicName;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class ProducerHandlerTest {
   private static final String TOPIC = "test-topic";
+  private static final String TEST_ROLE = "test-role";
   private static final String TEST_CONTEXT = "test-context";
 
   private GatewayService gatewayService;
@@ -306,6 +311,51 @@ public class ProducerHandlerTest {
     assertEquals(Code.INVALID_ARGUMENT_VALUE, error.getStatusCode());
     assertEquals(TEST_CONTEXT, error.getContext());
     assertEquals("error", error.getErrorMsg());
+  }
+
+  @Test
+  void testAuthorizedUser() throws Exception {
+    Context.current().withValue(AUTHENTICATION_ROLE_CTX_KEY, TEST_ROLE).attach();
+    when(gatewayService.isAuthorizationEnabled()).thenReturn(true);
+    AuthorizationService authorizationService = mock(AuthorizationService.class);
+    when(gatewayService.getAuthorizationService()).thenReturn(authorizationService);
+    when(authorizationService.canProduce(eq(TopicName.get(TOPIC)), eq(TEST_ROLE), any()))
+        .thenReturn(true);
+
+    callProduce();
+  }
+
+  @Test
+  void testUnAuthorizedUser() {
+    when(gatewayService.isAuthorizationEnabled()).thenReturn(true);
+    AuthorizationService authorizationService = mock(AuthorizationService.class);
+    when(gatewayService.getAuthorizationService()).thenReturn(authorizationService);
+
+    try {
+      callProduce();
+      fail("Should have thrown StatusRuntimeException");
+    } catch (StatusRuntimeException e) {
+      assertEquals(e.getStatus().getCode(), Status.Code.PERMISSION_DENIED);
+      assertEquals("Failed to create producer: Not authorized", e.getStatus().getDescription());
+    }
+  }
+
+  @Test
+  void testAuthorizationException() throws Exception {
+    Context.current().withValue(AUTHENTICATION_ROLE_CTX_KEY, TEST_ROLE).attach();
+    when(gatewayService.isAuthorizationEnabled()).thenReturn(true);
+    AuthorizationService authorizationService = mock(AuthorizationService.class);
+    when(gatewayService.getAuthorizationService()).thenReturn(authorizationService);
+    when(authorizationService.canProduce(eq(TopicName.get(TOPIC)), eq(TEST_ROLE), any()))
+        .thenThrow(new PulsarClientException.TimeoutException("timeout"));
+
+    try {
+      callProduce();
+      fail("Should have thrown StatusRuntimeException");
+    } catch (StatusRuntimeException e) {
+      assertEquals(e.getStatus().getCode(), Status.Code.ABORTED);
+      assertEquals("Failed to create producer: timeout", e.getStatus().getDescription());
+    }
   }
 
   private StreamObserver<ProducerRequest> callProduce() {

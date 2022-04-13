@@ -33,19 +33,39 @@ public class PulsarGrpcService extends PulsarGrpc.PulsarImplBase {
 
   @Override
   public StreamObserver<ProducerRequest> produce(StreamObserver<ProducerResponse> streamObserver) {
-    ProducerHandler handler = new ProducerHandler(service, streamObserver);
-    return handler.produce();
+    try {
+      ProducerHandler handler = new ProducerHandler(service, streamObserver);
+      return handler.produce();
+    } catch (Throwable t) {
+      streamObserver.onError(t);
+      return new NoopStreamObserver<>();
+    }
   }
 
   @Override
   public StreamObserver<ConsumerRequest> consume(StreamObserver<ConsumerResponse> streamObserver) {
-    ConsumerHandler handler = new ConsumerHandler(service, streamObserver);
-    return handler.consume();
+    try {
+      ConsumerHandler handler = new ConsumerHandler(service, streamObserver);
+      return handler.consume();
+    } catch (Throwable t) {
+      streamObserver.onError(t);
+      return new NoopStreamObserver<>();
+    }
   }
 
   @Override
   public void ping(StringValue request, StreamObserver<StringValue> responseObserver) {
     responseObserver.onNext(request);
     responseObserver.onCompleted();
+  }
+
+  static class NoopStreamObserver<V> implements StreamObserver<V> {
+    NoopStreamObserver() {}
+
+    public void onNext(V value) {}
+
+    public void onError(Throwable t) {}
+
+    public void onCompleted() {}
   }
 }

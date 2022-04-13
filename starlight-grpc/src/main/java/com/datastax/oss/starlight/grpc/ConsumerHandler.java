@@ -81,10 +81,8 @@ public class ConsumerHandler extends AbstractGrpcHandler {
               ? 1
               : builder.getConf().getReceiverQueueSize();
 
-      // TODO: make checkAuth async
       checkAuth();
 
-      // TODO: subscribe async
       consumer = builder.topic(topic.toString()).subscriptionName(subscription).subscribe();
 
     } catch (Exception e) {
