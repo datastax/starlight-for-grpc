@@ -36,6 +36,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 import org.apache.bookkeeper.util.PortManager;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.authentication.AuthenticationService;
@@ -47,7 +48,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-public class TlsConnectionIT {
+public class TlsConnectionTest {
 
   private static final String TLS_TRUST_CERT_FILE_PATH =
       "./src/test/resources/authentication/tls/cacert.pem";
@@ -75,12 +76,14 @@ public class TlsConnectionIT {
   private static final String CLIENT_TRUSTSTORE_PW = "111111";
 
   private static final String KEYSTORE_TYPE = "JKS";
+  private static final StringValue PING = StringValue.of("ping");
 
   @TempDir public static Path tempDir;
   private static PulsarCluster cluster;
 
   private GatewayService gatewayService;
   private GatewayConfiguration config;
+  private ManagedChannel channel;
 
   @BeforeAll
   public static void before() throws Exception {
@@ -144,6 +147,10 @@ public class TlsConnectionIT {
 
   @AfterEach
   public void afterEach() throws Exception {
+    if (channel == null) {
+      channel.shutdownNow();
+      channel.awaitTermination(30, TimeUnit.SECONDS);
+    }
     if (gatewayService != null) {
       gatewayService.close();
     }
@@ -163,23 +170,23 @@ public class TlsConnectionIT {
             new TreeSet<>(),
             new TreeSet<>());
 
-    ManagedChannel channel =
+    channel =
         NettyChannelBuilder.forAddress("localhost", gatewayService.getListenPortTLS().orElse(-1))
             .sslContext(GrpcSslContexts.configure(sslCtx).build())
             .build();
     PulsarGrpc.PulsarBlockingStub stub = PulsarGrpc.newBlockingStub(channel);
-    stub.ping(StringValue.of("ping"));
+    stub.ping(PING);
   }
 
   @Test
   void testTlsConnectionFailure() throws Exception {
     startGatewayService();
 
-    ManagedChannel channel =
+    channel =
         NettyChannelBuilder.forAddress("localhost", gatewayService.getListenPortTLS().orElse(-1))
             .build();
     PulsarGrpc.PulsarBlockingStub stub = PulsarGrpc.newBlockingStub(channel);
-    assertThrows(StatusRuntimeException.class, () -> stub.ping(StringValue.of("ping")));
+    assertThrows(StatusRuntimeException.class, () -> stub.ping(PING));
   }
 
   @Test
@@ -209,13 +216,13 @@ public class TlsConnectionIT {
             .clientAuth(ClientAuth.REQUIRE)
             .build();
 
-    ManagedChannel channel =
+    channel =
         NettyChannelBuilder.forAddress("localhost", gatewayService.getListenPortTLS().orElse(-1))
             .sslContext(sslContext)
             .build();
 
     PulsarGrpc.PulsarBlockingStub stub = PulsarGrpc.newBlockingStub(channel);
-    stub.ping(StringValue.of("ping"));
+    stub.ping(PING);
   }
 
   @Test
@@ -223,11 +230,11 @@ public class TlsConnectionIT {
     config.setTlsEnabledWithKeyStore(true);
     startGatewayService();
 
-    ManagedChannel channel =
+    channel =
         NettyChannelBuilder.forAddress("localhost", gatewayService.getListenPortTLS().orElse(-1))
             .build();
     PulsarGrpc.PulsarBlockingStub stub = PulsarGrpc.newBlockingStub(channel);
-    assertThrows(StatusRuntimeException.class, () -> stub.ping(StringValue.of("ping")));
+    assertThrows(StatusRuntimeException.class, () -> stub.ping(PING));
   }
 
   @Test
@@ -245,12 +252,12 @@ public class TlsConnectionIT {
             new TreeSet<>(),
             new TreeSet<>());
 
-    ManagedChannel channel =
+    channel =
         NettyChannelBuilder.forAddress("localhost", gatewayService.getListenPortTLS().orElse(-1))
             .sslContext(GrpcSslContexts.configure(sslCtx).build())
             .build();
     PulsarGrpc.PulsarBlockingStub stub = PulsarGrpc.newBlockingStub(channel);
-    stub.ping(StringValue.of("ping"));
+    stub.ping(PING);
   }
 
   @Test
@@ -269,14 +276,14 @@ public class TlsConnectionIT {
             new TreeSet<>(),
             new TreeSet<>());
 
-    ManagedChannel channel =
+    channel =
         NettyChannelBuilder.forAddress("localhost", gatewayService.getListenPortTLS().orElse(-1))
             .sslContext(GrpcSslContexts.configure(sslCtx).build())
             .build();
     PulsarGrpc.PulsarBlockingStub stub = PulsarGrpc.newBlockingStub(channel);
 
     try {
-      stub.ping(StringValue.of("ping"));
+      stub.ping(PING);
       fail("Should have thrown StatusRuntimeException");
     } catch (StatusRuntimeException e) {
       assertEquals(e.getStatus().getCode(), Status.Code.UNAUTHENTICATED);

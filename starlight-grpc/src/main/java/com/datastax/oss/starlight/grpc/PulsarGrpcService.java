@@ -37,6 +37,13 @@ public class PulsarGrpcService extends PulsarGrpc.PulsarImplBase {
     try {
       ProducerHandler handler = new ProducerHandler(service, streamObserver);
       return handler.produce();
+    } catch (IllegalArgumentException e) {
+      streamObserver.onError(
+          Status.INVALID_ARGUMENT
+              .withCause(e)
+              .withDescription(e.getMessage())
+              .asRuntimeException());
+      return new NoopStreamObserver<>();
     } catch (Throwable t) {
       streamObserver.onError(t);
       return new NoopStreamObserver<>();

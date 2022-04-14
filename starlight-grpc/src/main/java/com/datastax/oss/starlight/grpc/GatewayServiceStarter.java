@@ -113,7 +113,7 @@ public class GatewayServiceStarter {
         }
         authorizationService =
             new AuthorizationService(
-                PulsarConfigurationLoader.convertFrom(config), configurationCacheService);
+                ConfigurationUtils.convertFrom(config), configurationCacheService);
       }
 
       // create gateway service
