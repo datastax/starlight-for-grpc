@@ -38,9 +38,7 @@ import java.security.GeneralSecurityException;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import org.apache.bookkeeper.util.PortManager;
-import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.authentication.AuthenticationService;
-import org.apache.pulsar.common.policies.data.ClusterDataImpl;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -53,9 +51,9 @@ public class TlsConnectionTest {
   private static final String TLS_TRUST_CERT_FILE_PATH =
       "./src/test/resources/authentication/tls/cacert.pem";
   private static final String TLS_GATEWAY_CERT_FILE_PATH =
-      "./src/test/resources/authentication/tls/broker-cert.pem";
+      "./src/test/resources/authentication/tls/server-cert.pem";
   private static final String TLS_GATEWAY_KEY_FILE_PATH =
-      "./src/test/resources/authentication/tls/broker-key.pem";
+      "./src/test/resources/authentication/tls/server-key.pem";
   private static final String TLS_CLIENT_CERT_FILE_PATH =
       "./src/test/resources/authentication/tls/client-cert.pem";
   private static final String TLS_CLIENT_KEY_FILE_PATH =
@@ -128,26 +126,18 @@ public class TlsConnectionTest {
   }
 
   private void startGatewayService() throws IOException, GeneralSecurityException {
-    PulsarService pulsar = cluster.getService();
-    ClusterDataImpl clusterData =
-        ClusterDataImpl.builder()
-            .serviceUrl(pulsar.getWebServiceAddress())
-            .serviceUrlTls(pulsar.getWebServiceAddressTls())
-            .brokerServiceUrl(pulsar.getBrokerServiceUrl())
-            .brokerServiceUrlTls(pulsar.getBrokerServiceUrlTls())
-            .build();
     gatewayService =
         new GatewayService(
             config,
             new AuthenticationService(ConfigurationUtils.convertFrom(config)),
-            pulsar.getBrokerService().getAuthorizationService(),
-            clusterData);
+            null,
+            cluster.getClusterData());
     gatewayService.start();
   }
 
   @AfterEach
   public void afterEach() throws Exception {
-    if (channel == null) {
+    if (channel != null) {
       channel.shutdownNow();
       channel.awaitTermination(30, TimeUnit.SECONDS);
     }

@@ -75,9 +75,9 @@ public class AuthenticationInterceptorTest {
   private static final String TLS_TRUST_CERT_FILE_PATH =
       "./src/test/resources/authentication/tls/cacert.pem";
   private static final String TLS_SERVER_CERT_FILE_PATH =
-      "./src/test/resources/authentication/tls/broker-cert.pem";
+      "./src/test/resources/authentication/tls/server-cert.pem";
   private static final String TLS_SERVER_KEY_FILE_PATH =
-      "./src/test/resources/authentication/tls/broker-key.pem";
+      "./src/test/resources/authentication/tls/server-key.pem";
   private static final String TLS_CLIENT_CERT_FILE_PATH =
       "./src/test/resources/authentication/tls/client-cert.pem";
   private static final String TLS_CLIENT_KEY_FILE_PATH =

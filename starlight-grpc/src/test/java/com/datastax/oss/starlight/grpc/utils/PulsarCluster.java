@@ -22,6 +22,7 @@ import org.apache.bookkeeper.util.PortManager;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.common.policies.data.ClusterData;
+import org.apache.pulsar.common.policies.data.ClusterDataImpl;
 import org.apache.pulsar.common.policies.data.TenantInfo;
 
 /** Pulsar cluster. */
@@ -60,6 +61,15 @@ public class PulsarCluster implements AutoCloseable {
 
   public String getAddress() {
     return service.getWebServiceAddress();
+  }
+
+  public ClusterData getClusterData() {
+    return ClusterDataImpl.builder()
+        .serviceUrl(service.getWebServiceAddress())
+        .serviceUrlTls(service.getWebServiceAddressTls())
+        .brokerServiceUrl(service.getBrokerServiceUrl())
+        .brokerServiceUrlTls(service.getBrokerServiceUrlTls())
+        .build();
   }
 
   public void start() throws Exception {

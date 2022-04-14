@@ -175,17 +175,31 @@ public class GatewayService {
             .ioThreads(config.getGrpcSocketNumIoThreads()) //
             .connectionsPerBroker(config.getGrpcSocketConnectionsPerBroker());
 
-    if (isNotBlank(config.getBrokerClientAuthenticationPlugin())
-        && isNotBlank(config.getBrokerClientAuthenticationParameters())) {
+    if (isNotBlank(config.getBrokerClientAuthenticationPlugin())) {
       if (isNotBlank(config.getGrpcBrokerClientAuthenticationParameters())) {
         clientBuilder.authentication(
             config.getBrokerClientAuthenticationPlugin(),
             config.getGrpcBrokerClientAuthenticationParameters());
-      } else {
+      } else if (isNotBlank(config.getBrokerClientAuthenticationParameters())) {
         clientBuilder.authentication(
             config.getBrokerClientAuthenticationPlugin(),
             config.getBrokerClientAuthenticationParameters());
       }
+    }
+
+    // set trust store if needed.
+    if (config.isTlsEnabledWithBroker()) {
+      if (config.isBrokerClientTlsEnabledWithKeyStore()) {
+        clientBuilder
+            .useKeyStoreTls(true)
+            .tlsTrustStoreType(config.getBrokerClientTlsTrustStoreType())
+            .tlsTrustStorePath(config.getBrokerClientTlsTrustStore())
+            .tlsTrustStorePassword(config.getBrokerClientTlsTrustStorePassword());
+      } else {
+        clientBuilder.tlsTrustCertsFilePath(config.getBrokerClientTrustCertsFilePath());
+      }
+      clientBuilder.allowTlsInsecureConnection(config.isTlsAllowInsecureConnection());
+      clientBuilder.enableTlsHostnameVerification(config.isTlsHostnameVerificationEnabled());
     }
 
     if (config.isTlsEnabledWithBroker()) {

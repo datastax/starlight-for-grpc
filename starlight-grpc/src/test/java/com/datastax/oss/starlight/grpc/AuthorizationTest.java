@@ -20,6 +20,7 @@ import static com.datastax.oss.starlight.grpc.Constants.CLIENT_PARAMS_METADATA_K
 import static org.apache.pulsar.broker.resources.PulsarResources.createMetadataStore;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
+
 import com.datastax.oss.starlight.grpc.proto.ClientParameters;
 import com.datastax.oss.starlight.grpc.proto.ProducerRequest;
 import com.datastax.oss.starlight.grpc.proto.ProducerResponse;
@@ -49,14 +50,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import javax.crypto.SecretKey;
 import org.apache.bookkeeper.util.PortManager;
-import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.authentication.AuthenticationService;
 import org.apache.pulsar.broker.authentication.utils.AuthTokenUtils;
 import org.apache.pulsar.broker.authorization.AuthorizationService;
 import org.apache.pulsar.broker.cache.ConfigurationMetadataCacheService;
 import org.apache.pulsar.broker.resources.PulsarResources;
 import org.apache.pulsar.common.policies.data.AuthAction;
-import org.apache.pulsar.common.policies.data.ClusterDataImpl;
 import org.apache.pulsar.metadata.api.extended.MetadataStoreExtended;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -101,7 +100,8 @@ public class AuthorizationTest {
         cluster.getService().getConfig().getConfigurationStoreServers());
 
     config.setAuthenticationEnabled(true);
-    config.setAuthenticationProviders(Sets.newHashSet("org.apache.pulsar.broker.authentication.AuthenticationProviderToken"));
+    config.setAuthenticationProviders(
+        Sets.newHashSet("org.apache.pulsar.broker.authentication.AuthenticationProviderToken"));
     config
         .getProperties()
         .setProperty(
@@ -110,28 +110,21 @@ public class AuthorizationTest {
 
     config.setAuthorizationEnabled(true);
 
-    MetadataStoreExtended configMetadataStore = createMetadataStore(
-        config.getConfigurationStoreServers(), config.getZookeeperSessionTimeoutMs());
+    MetadataStoreExtended configMetadataStore =
+        createMetadataStore(
+            config.getConfigurationStoreServers(), config.getZookeeperSessionTimeoutMs());
     PulsarResources pulsarResources = new PulsarResources(null, configMetadataStore);
     ConfigurationMetadataCacheService configurationCacheService =
         new ConfigurationMetadataCacheService(pulsarResources, null);
-    AuthorizationService authorizationService = new AuthorizationService(
-        ConfigurationUtils.convertFrom(config), configurationCacheService);
+    AuthorizationService authorizationService =
+        new AuthorizationService(ConfigurationUtils.convertFrom(config), configurationCacheService);
 
-    PulsarService pulsar = cluster.getService();
-    ClusterDataImpl clusterData =
-        ClusterDataImpl.builder()
-            .serviceUrl(pulsar.getWebServiceAddress())
-            .serviceUrlTls(pulsar.getWebServiceAddressTls())
-            .brokerServiceUrl(pulsar.getBrokerServiceUrl())
-            .brokerServiceUrlTls(pulsar.getBrokerServiceUrlTls())
-            .build();
     gatewayService =
         new GatewayService(
             config,
             new AuthenticationService(ConfigurationUtils.convertFrom(config)),
             authorizationService,
-            clusterData);
+            cluster.getClusterData());
     gatewayService.start();
 
     channel =
@@ -157,8 +150,7 @@ public class AuthorizationTest {
 
   @Test
   void testAuthorizationSuccess() throws Exception {
-    String clientToken =
-        Jwts.builder().setSubject(CLIENT_ROLE).signWith(SECRET_KEY).compact();
+    String clientToken = Jwts.builder().setSubject(CLIENT_ROLE).signWith(SECRET_KEY).compact();
     callProduce(clientToken);
   }
 
@@ -198,13 +190,15 @@ public class AuthorizationTest {
           }
 
           @Override
-          public void onCompleted() {
-          }
+          public void onCompleted() {}
         };
     StreamObserver<ProducerRequest> request = pulsarStub.produce(responses);
     request.onNext(
-        ProducerRequest.newBuilder().setSend(ProducerSend.newBuilder().setPayload(ByteString.copyFrom("test".getBytes(
-            StandardCharsets.UTF_8)))).build());
+        ProducerRequest.newBuilder()
+            .setSend(
+                ProducerSend.newBuilder()
+                    .setPayload(ByteString.copyFrom("test".getBytes(StandardCharsets.UTF_8))))
+            .build());
     response.get(5, TimeUnit.SECONDS);
   }
 }
