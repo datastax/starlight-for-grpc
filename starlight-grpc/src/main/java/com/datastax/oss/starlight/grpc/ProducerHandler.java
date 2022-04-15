@@ -23,6 +23,7 @@ import com.datastax.oss.starlight.grpc.proto.ProducerSend;
 import com.datastax.oss.starlight.grpc.proto.ProducerSendError;
 import com.google.common.base.Strings;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.Empty;
 import io.grpc.Status.Code;
 import io.grpc.stub.StreamObserver;
 import java.util.concurrent.TimeUnit;
@@ -58,6 +59,8 @@ public class ProducerHandler extends AbstractGrpcHandler {
               .topic(topic.toString())
               .create();
 
+      responseStreamObserver.onNext(
+          ProducerResponse.newBuilder().setProducerSuccess(Empty.getDefaultInstance()).build());
     } catch (Exception e) {
       log.warn(
           "[{}] Failed in creating producer on topic {}: {}", remoteAddress, topic, e.getMessage());

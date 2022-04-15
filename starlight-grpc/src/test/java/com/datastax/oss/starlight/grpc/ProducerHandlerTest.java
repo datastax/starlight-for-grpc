@@ -53,6 +53,7 @@ import io.grpc.stub.StreamObserver;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.apache.pulsar.broker.authorization.AuthorizationService;
 import org.apache.pulsar.client.api.CompressionType;
@@ -196,6 +197,28 @@ public class ProducerHandlerTest {
       assertEquals(Status.Code.INVALID_ARGUMENT, e.getStatus().getCode());
       assertTrue(e.getStatus().getDescription().startsWith("Invalid header params: "));
     }
+  }
+
+  @Test
+  void testProducerSuccess() throws Exception {
+    CountDownLatch subscribed = new CountDownLatch(1);
+    StreamObserver<ProducerResponse> responses =
+        new StreamObserver<ProducerResponse>() {
+          @Override
+          public void onNext(ProducerResponse producerResponse) {
+            if (producerResponse.hasProducerSuccess()) {
+              subscribed.countDown();
+            }
+          }
+
+          @Override
+          public void onError(Throwable throwable) {}
+
+          @Override
+          public void onCompleted() {}
+        };
+    new ProducerHandler(gatewayService, responses).produce();
+    assertTrue(subscribed.await(5, TimeUnit.SECONDS));
   }
 
   @Test
@@ -396,7 +419,9 @@ public class ProducerHandlerTest {
         new StreamObserver<ProducerResponse>() {
           @Override
           public void onNext(ProducerResponse consumerResponse) {
-            response.complete(consumerResponse);
+            if (!consumerResponse.hasProducerSuccess()) {
+              response.complete(consumerResponse);
+            }
           }
 
           @Override

@@ -31,7 +31,6 @@ import io.grpc.netty.NettyChannelBuilder;
 import io.netty.handler.ssl.ClientAuth;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
-import io.prometheus.client.CollectorRegistry;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
@@ -98,7 +97,6 @@ public class TlsConnectionTest {
 
   @BeforeEach
   public void beforeEach() {
-    CollectorRegistry.defaultRegistry.clear();
     int port = PortManager.nextFreePort();
 
     config = new GatewayConfiguration();

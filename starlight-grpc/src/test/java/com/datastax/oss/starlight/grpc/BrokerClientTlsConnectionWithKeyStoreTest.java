@@ -62,7 +62,6 @@ public class BrokerClientTlsConnectionWithKeyStoreTest {
   @BeforeAll
   public static void before() throws Exception {
     ServiceConfiguration pulsarConfig = new ServiceConfiguration();
-    pulsarConfig.setAdvertisedAddress("localhost");
 
     pulsarConfig.setTlsEnabledWithKeyStore(true);
     pulsarConfig.setTlsKeyStoreType(KEYSTORE_TYPE);

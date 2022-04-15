@@ -28,6 +28,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.Empty;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -84,6 +85,9 @@ public class ConsumerHandler extends AbstractGrpcHandler {
       checkAuth();
 
       consumer = builder.topic(topic.toString()).subscriptionName(subscription).subscribe();
+
+      messageStreamObserver.onNext(
+          ConsumerResponse.newBuilder().setSubscribeSuccess(Empty.getDefaultInstance()).build());
 
     } catch (Exception e) {
       throw getStatus(e).withDescription(getErrorMessage(e)).asRuntimeException();

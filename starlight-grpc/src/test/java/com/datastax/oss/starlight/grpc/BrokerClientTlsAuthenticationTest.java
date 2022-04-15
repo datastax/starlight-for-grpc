@@ -59,7 +59,6 @@ public class BrokerClientTlsAuthenticationTest {
   @BeforeAll
   public static void before() throws Exception {
     ServiceConfiguration pulsarConfig = new ServiceConfiguration();
-    pulsarConfig.setAdvertisedAddress("localhost");
     pulsarConfig.setAuthenticationEnabled(true);
     pulsarConfig.setAuthenticationProviders(
         Sets.newHashSet("org.apache.pulsar.broker.authentication.AuthenticationProviderTls"));

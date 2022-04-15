@@ -58,6 +58,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -246,6 +247,28 @@ public class ConsumerHandlerTest {
   }
 
   @Test
+  void testSubscribeSuccess() throws Exception {
+    CountDownLatch subscribed = new CountDownLatch(1);
+    StreamObserver<ConsumerResponse> responses =
+        new StreamObserver<ConsumerResponse>() {
+          @Override
+          public void onNext(ConsumerResponse consumerResponse) {
+            if (consumerResponse.hasSubscribeSuccess()) {
+              subscribed.countDown();
+            }
+          }
+
+          @Override
+          public void onError(Throwable throwable) {}
+
+          @Override
+          public void onCompleted() {}
+        };
+    new ConsumerHandler(gatewayService, responses).consume();
+    assertTrue(subscribed.await(5, TimeUnit.SECONDS));
+  }
+
+  @Test
   void testSubscribeException() throws Exception {
     doThrow(new PulsarClientException.TimeoutException("timeout"))
         .when(consumerBuilder)
@@ -412,6 +435,10 @@ public class ConsumerHandlerTest {
 
     ConsumerResponse consumerResponse = responses.poll(5, TimeUnit.SECONDS);
     assertNotNull(consumerResponse);
+    assertTrue(consumerResponse.hasSubscribeSuccess());
+
+    consumerResponse = responses.poll(5, TimeUnit.SECONDS);
+    assertNotNull(consumerResponse);
     ConsumerMessage consumerMessage = consumerResponse.getMessage();
     assertNotNull(consumerMessage);
     assertArrayEquals(TEST_MESSAGE_ID.toByteArray(), consumerMessage.getMessageId().toByteArray());
@@ -465,7 +492,11 @@ public class ConsumerHandlerTest {
     StreamObserver<ConsumerRequest> requests =
         new ConsumerHandler(gatewayService, responseStreamObserver).consume();
 
-    ConsumerResponse consumerResponse = responses.poll(1, TimeUnit.SECONDS);
+    ConsumerResponse consumerResponse = responses.poll(5, TimeUnit.SECONDS);
+    assertNotNull(consumerResponse);
+    assertTrue(consumerResponse.hasSubscribeSuccess());
+
+    consumerResponse = responses.poll(5, TimeUnit.SECONDS);
     assertNotNull(consumerResponse);
     assertNotNull(consumerResponse.getMessage());
 
@@ -556,7 +587,9 @@ public class ConsumerHandlerTest {
         new StreamObserver<ConsumerResponse>() {
           @Override
           public void onNext(ConsumerResponse consumerResponse) {
-            response.complete(consumerResponse);
+            if (!consumerResponse.hasSubscribeSuccess()) {
+              response.complete(consumerResponse);
+            }
           }
 
           @Override

@@ -38,7 +38,6 @@ import io.grpc.stub.MetadataUtils;
 import io.grpc.stub.StreamObserver;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-import io.prometheus.client.CollectorRegistry;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -78,7 +77,6 @@ public class AuthorizationTest {
 
   @BeforeAll
   public static void before() throws Exception {
-    CollectorRegistry.defaultRegistry.clear();
     cluster = new PulsarCluster(tempDir);
     cluster.start();
 

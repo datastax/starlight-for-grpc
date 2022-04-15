@@ -7,6 +7,7 @@ option java_package = "com.datastax.oss.starlight.grpc.proto";
 option java_outer_classname = "GrpcProxy";
 
 import "google/protobuf/wrappers.proto";
+import "google/protobuf/empty.proto";
 
 service Pulsar {
   rpc Produce(stream ProducerRequest) returns (stream ProducerResponse);
@@ -22,8 +23,9 @@ message ProducerRequest {
 
 message ProducerResponse {
   oneof response {
-    ProducerAck ack = 1;
-    ProducerSendError error = 2;
+    google.protobuf.Empty producerSuccess = 1;
+    ProducerAck ack = 2;
+    ProducerSendError error = 3;
   }
 }
 
@@ -74,8 +76,9 @@ message ConsumerEndOfTopic {
 
 message ConsumerResponse {
   oneof response {
-    ConsumerMessage message = 1;
-    ConsumerEndOfTopicResponse endOfTopicResponse = 2;
+    google.protobuf.Empty subscribeSuccess = 1;
+    ConsumerMessage message = 2;
+    ConsumerEndOfTopicResponse endOfTopicResponse = 3;
   }
 }
 
