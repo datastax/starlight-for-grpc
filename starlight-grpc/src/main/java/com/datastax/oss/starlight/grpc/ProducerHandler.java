@@ -83,18 +83,17 @@ public class ProducerHandler extends AbstractGrpcHandler {
         if (request.getRequestCase() == ProducerRequest.RequestCase.SEND) {
           ProducerSend message = request.getSend();
           TypedMessageBuilder<byte[]> builder = producer.newMessage();
-          String requestContext = message.getContext();
           try {
             builder.value(message.getPayload().toByteArray());
           } catch (SchemaSerializationException e) {
             synchronized (responseStreamObserver) {
               responseStreamObserver.onNext(
                   ProducerResponse.newBuilder()
+                      .setContext(request.getContext())
                       .setError(
                           ProducerSendError.newBuilder()
                               .setStatusCode(Code.INVALID_ARGUMENT.value())
-                              .setErrorMsg(e.getMessage())
-                              .setContext(requestContext))
+                              .setErrorMsg(e.getMessage()))
                       .build());
             }
             return;
@@ -129,10 +128,10 @@ public class ProducerHandler extends AbstractGrpcHandler {
                     synchronized (responseStreamObserver) {
                       responseStreamObserver.onNext(
                           ProducerResponse.newBuilder()
+                              .setContext(request.getContext())
                               .setAck(
                                   ProducerAck.newBuilder()
-                                      .setMessageId(ByteString.copyFrom(msgId.toByteArray()))
-                                      .setContext(requestContext))
+                                      .setMessageId(ByteString.copyFrom(msgId.toByteArray())))
                               .build());
                     }
                   })
@@ -147,11 +146,11 @@ public class ProducerHandler extends AbstractGrpcHandler {
                     synchronized (responseStreamObserver) {
                       responseStreamObserver.onNext(
                           ProducerResponse.newBuilder()
+                              .setContext(request.getContext())
                               .setError(
                                   ProducerSendError.newBuilder()
                                       .setStatusCode(Code.INTERNAL.value())
-                                      .setErrorMsg(exception.getMessage())
-                                      .setContext(requestContext))
+                                      .setErrorMsg(exception.getMessage()))
                               .build());
                     }
                     return null;

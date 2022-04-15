@@ -77,7 +77,7 @@ import org.junit.jupiter.api.Test;
 public class ProducerHandlerTest {
   private static final String TOPIC = "test-topic";
   private static final String TEST_ROLE = "test-role";
-  private static final String TEST_CONTEXT = "test-context";
+  private static final ByteString TEST_CONTEXT = ByteString.copyFromUtf8("test-context");
 
   private GatewayService gatewayService;
   private ProducerBuilderImpl<byte[]> producerBuilder;
@@ -272,10 +272,10 @@ public class ProducerHandlerTest {
 
     ProducerRequest request =
         ProducerRequest.newBuilder()
+            .setContext(TEST_CONTEXT)
             .setSend(
                 ProducerSend.newBuilder()
                     .setPayload(ByteString.copyFromUtf8(payload))
-                    .setContext(TEST_CONTEXT)
                     .putProperties(propertyKey, propertyValue)
                     .setKey(key)
                     .addReplicationClusters(replicationCluster)
@@ -285,9 +285,10 @@ public class ProducerHandlerTest {
     requests.onNext(request);
 
     // Check Ack
-    ProducerAck ack = response.get(5, TimeUnit.SECONDS).getAck();
+    ProducerResponse producerResponse = response.get(5, TimeUnit.SECONDS);
+    assertEquals(TEST_CONTEXT, producerResponse.getContext());
+    ProducerAck ack = producerResponse.getAck();
     assertNotNull(ack);
-    assertEquals(TEST_CONTEXT, ack.getContext());
     assertArrayEquals(messageId.toByteArray(), ack.getMessageId().toByteArray());
 
     // Verify message properties
@@ -323,17 +324,16 @@ public class ProducerHandlerTest {
 
     ProducerRequest request =
         ProducerRequest.newBuilder()
-            .setSend(
-                ProducerSend.newBuilder()
-                    .setPayload(ByteString.copyFromUtf8("payload"))
-                    .setContext(TEST_CONTEXT))
+            .setContext(TEST_CONTEXT)
+            .setSend(ProducerSend.newBuilder().setPayload(ByteString.copyFromUtf8("payload")))
             .build();
     requests.onNext(request);
 
-    ProducerSendError error = response.get(5, TimeUnit.SECONDS).getError();
+    ProducerResponse producerResponse = response.get(5, TimeUnit.SECONDS);
+    assertEquals(TEST_CONTEXT, producerResponse.getContext());
+    ProducerSendError error = producerResponse.getError();
     assertNotNull(error);
     assertEquals(Code.INTERNAL_VALUE, error.getStatusCode());
-    assertEquals(TEST_CONTEXT, error.getContext());
     assertEquals("org.apache.pulsar.client.api.PulsarClientException: error", error.getErrorMsg());
   }
 
@@ -346,17 +346,16 @@ public class ProducerHandlerTest {
 
     ProducerRequest request =
         ProducerRequest.newBuilder()
-            .setSend(
-                ProducerSend.newBuilder()
-                    .setPayload(ByteString.copyFromUtf8("payload"))
-                    .setContext(TEST_CONTEXT))
+            .setContext(TEST_CONTEXT)
+            .setSend(ProducerSend.newBuilder().setPayload(ByteString.copyFromUtf8("payload")))
             .build();
     requests.onNext(request);
 
-    ProducerSendError error = response.get(5, TimeUnit.SECONDS).getError();
+    ProducerResponse producerResponse = response.get(5, TimeUnit.SECONDS);
+    assertEquals(TEST_CONTEXT, producerResponse.getContext());
+    ProducerSendError error = producerResponse.getError();
     assertNotNull(error);
     assertEquals(Code.INVALID_ARGUMENT_VALUE, error.getStatusCode());
-    assertEquals(TEST_CONTEXT, error.getContext());
     assertEquals("error", error.getErrorMsg());
   }
 

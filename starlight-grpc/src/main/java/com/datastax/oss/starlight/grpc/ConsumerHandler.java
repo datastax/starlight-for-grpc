@@ -111,7 +111,7 @@ public class ConsumerHandler extends AbstractGrpcHandler {
               handleUnsubscribe();
               break;
             case END_OF_TOPIC:
-              handleEndOfTopic();
+              handleEndOfTopic(request);
               break;
             default:
               break;
@@ -143,7 +143,7 @@ public class ConsumerHandler extends AbstractGrpcHandler {
   }
 
   // Check and notify consumer if reached end of topic.
-  private void handleEndOfTopic() {
+  private void handleEndOfTopic(ConsumerRequest request) {
     if (log.isDebugEnabled()) {
       log.debug(
           "[{}/{}] Received check reach the end of topic request from {} ",
@@ -154,6 +154,7 @@ public class ConsumerHandler extends AbstractGrpcHandler {
     synchronized (messageStreamObserver) {
       messageStreamObserver.onNext(
           ConsumerResponse.newBuilder()
+              .setContext(request.getContext())
               .setEndOfTopicResponse(
                   ConsumerEndOfTopicResponse.newBuilder()
                       .setReachedEndOfTopic(consumer.hasReachedEndOfTopic()))

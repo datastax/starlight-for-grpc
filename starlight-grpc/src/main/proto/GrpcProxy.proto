@@ -16,23 +16,24 @@ service Pulsar {
 }
 
 message ProducerRequest {
+  bytes context = 1;
   oneof request {
-    ProducerSend send = 1;
+    ProducerSend send = 2;
   }
 }
 
 message ProducerResponse {
+  bytes context = 1;
   oneof response {
-    google.protobuf.Empty producerSuccess = 1;
-    ProducerAck ack = 2;
-    ProducerSendError error = 3;
+    google.protobuf.Empty producerSuccess = 2;
+    ProducerAck ack = 3;
+    ProducerSendError error = 4;
   }
 }
 
 message ProducerSend {
   bytes payload = 1;
   map<string, string> properties = 2;
-  string context = 3;
   string key = 4;
   repeated string replication_clusters = 5;
   uint64 event_time = 6;
@@ -42,21 +43,20 @@ message ProducerSend {
 
 message ProducerAck {
   bytes message_id = 1;
-  string context = 2;
 }
 
 message ProducerSendError {
   uint32 status_code = 1;
   string error_msg = 2;
-  string context = 3;
 }
 
 message ConsumerRequest {
+  bytes context = 1;
   oneof request {
-    ConsumerAck ack = 1;
-    ConsumerNack nack = 2;
-    ConsumerUnsubscribe unsubscribe = 3;
-    ConsumerEndOfTopic end_of_topic = 4;
+    ConsumerAck ack = 2;
+    ConsumerNack nack = 3;
+    ConsumerUnsubscribe unsubscribe = 4;
+    ConsumerEndOfTopic end_of_topic = 5;
   }
 }
 
@@ -75,10 +75,11 @@ message ConsumerEndOfTopic {
 }
 
 message ConsumerResponse {
+  bytes context = 1;
   oneof response {
-    google.protobuf.Empty subscribeSuccess = 1;
-    ConsumerMessage message = 2;
-    ConsumerEndOfTopicResponse endOfTopicResponse = 3;
+    google.protobuf.Empty subscribeSuccess = 2;
+    ConsumerMessage message = 3;
+    ConsumerEndOfTopicResponse endOfTopicResponse = 4;
   }
 }
 

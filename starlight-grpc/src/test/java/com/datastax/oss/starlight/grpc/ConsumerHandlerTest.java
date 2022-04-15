@@ -377,13 +377,16 @@ public class ConsumerHandlerTest {
     CompletableFuture<ConsumerResponse> response = new CompletableFuture<>();
     StreamObserver<ConsumerRequest> requests = callConsume(response);
 
+    ByteString context = ByteString.copyFromUtf8("test-context");
     requests.onNext(
         ConsumerRequest.newBuilder()
+            .setContext(context)
             .setEndOfTopic(ConsumerEndOfTopic.getDefaultInstance())
             .build());
 
-    ConsumerEndOfTopicResponse endOfTopicResponse =
-        response.get(5, TimeUnit.SECONDS).getEndOfTopicResponse();
+    ConsumerResponse consumerResponse = response.get(5, TimeUnit.SECONDS);
+    assertEquals(context, consumerResponse.getContext());
+    ConsumerEndOfTopicResponse endOfTopicResponse = consumerResponse.getEndOfTopicResponse();
     assertNotNull(endOfTopicResponse);
     assertTrue(endOfTopicResponse.getReachedEndOfTopic());
   }
