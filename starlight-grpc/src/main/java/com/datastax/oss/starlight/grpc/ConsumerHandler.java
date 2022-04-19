@@ -15,6 +15,8 @@
  */
 package com.datastax.oss.starlight.grpc;
 
+import static com.datastax.oss.starlight.grpc.Converters.toConsumerCryptoFailureAction;
+import static com.datastax.oss.starlight.grpc.Converters.toSubscriptionType;
 import static com.google.common.base.Preconditions.checkArgument;
 
 import com.datastax.oss.starlight.grpc.proto.ConsumerAck;
@@ -29,6 +31,7 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Empty;
+import com.google.protobuf.StringValue;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -257,11 +260,9 @@ public class ConsumerHandler extends AbstractGrpcHandler {
               dm.putAllProperties(msg.getProperties());
               dm.setPublishTime(msg.getPublishTime());
               dm.setEventTime(msg.getEventTime());
-              // TODO: needs proto hasKey or empty string is OK ?
               if (msg.hasKey()) {
-                dm.setKey(msg.getKey());
+                dm.setKey(StringValue.of(msg.getKey()));
               }
-              // final long msgSize = msg.getData().length;
               messageIdCache.put(dm.getMessageId(), msg.getMessageId());
 
               synchronized (messageStreamObserver) {
@@ -289,43 +290,8 @@ public class ConsumerHandler extends AbstractGrpcHandler {
                     remoteAddress,
                     exception.getMessage());
               }
-              synchronized (messageStreamObserver) {
-                messageStreamObserver.onError(exception);
-              }
-              close();
               return null;
             });
-  }
-
-  private static SubscriptionType toSubscriptionType(ConsumerParameters.SubscriptionType type) {
-    switch (type) {
-      case SUBSCRIPTION_TYPE_EXCLUSIVE:
-        return SubscriptionType.Exclusive;
-      case SUBSCRIPTION_TYPE_FAILOVER:
-        return SubscriptionType.Failover;
-      case SUBSCRIPTION_TYPE_SHARED:
-        return SubscriptionType.Shared;
-      case SUBSCRIPTION_TYPE_DEFAULT:
-        return null;
-      default:
-        throw new IllegalArgumentException("Invalid subscription type");
-    }
-  }
-
-  private static ConsumerCryptoFailureAction toConsumerCryptoFailureAction(
-      ConsumerParameters.ConsumerCryptoFailureAction action) {
-    switch (action) {
-      case CONSUMER_CRYPTO_FAILURE_ACTION_FAIL:
-        return ConsumerCryptoFailureAction.FAIL;
-      case CONSUMER_CRYPTO_FAILURE_ACTION_DISCARD:
-        return ConsumerCryptoFailureAction.DISCARD;
-      case CONSUMER_CRYPTO_FAILURE_ACTION_CONSUME:
-        return ConsumerCryptoFailureAction.CONSUME;
-      case CONSUMER_CRYPTO_FAILURE_ACTION_DEFAULT:
-        return null;
-      default:
-        throw new IllegalArgumentException("Invalid consumer crypto failure action");
-    }
   }
 
   private ConsumerBuilder<byte[]> getConsumerConfiguration(
@@ -342,6 +308,7 @@ public class ConsumerHandler extends AbstractGrpcHandler {
     }
 
     if (params.hasReceiverQueueSize()) {
+      // TODO: make max receiver queue size a proxy conf param
       builder.receiverQueueSize(Math.min(params.getReceiverQueueSize().getValue(), 1000));
     }
 

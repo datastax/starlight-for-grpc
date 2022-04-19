@@ -15,6 +15,10 @@
  */
 package com.datastax.oss.starlight.grpc;
 
+import static com.datastax.oss.starlight.grpc.Converters.toCompressionType;
+import static com.datastax.oss.starlight.grpc.Converters.toHashingScheme;
+import static com.datastax.oss.starlight.grpc.Converters.toMessageRoutingMode;
+
 import com.datastax.oss.starlight.grpc.proto.ProducerAck;
 import com.datastax.oss.starlight.grpc.proto.ProducerParameters;
 import com.datastax.oss.starlight.grpc.proto.ProducerRequest;
@@ -192,48 +196,6 @@ public class ProducerHandler extends AbstractGrpcHandler {
                 log.warn("[{}] Failed to close producer", producer.getTopic(), exception);
                 return null;
               });
-    }
-  }
-
-  private static HashingScheme toHashingScheme(ProducerParameters.HashingScheme scheme) {
-    switch (scheme) {
-      case HASHING_SCHEME_JAVA_STRING_HASH:
-        return HashingScheme.JavaStringHash;
-      case HASHING_SCHEME_MURMUR3_32HASH:
-        return HashingScheme.Murmur3_32Hash;
-      case HASHING_SCHEME_DEFAULT:
-        return null;
-      default:
-        throw new IllegalArgumentException("Invalid hashing scheme");
-    }
-  }
-
-  private static MessageRoutingMode toMessageRoutingMode(
-      ProducerParameters.MessageRoutingMode mode) {
-    switch (mode) {
-      case MESSAGE_ROUTING_MODE_SINGLE_PARTITION:
-        return MessageRoutingMode.SinglePartition;
-      case MESSAGE_ROUTING_MODE_ROUND_ROBIN_PARTITION:
-        return MessageRoutingMode.RoundRobinPartition;
-      case MESSAGE_ROUTING_MODE_DEFAULT:
-        return null;
-      default:
-        throw new IllegalArgumentException("Invalid message routing mode");
-    }
-  }
-
-  private static CompressionType toCompressionType(ProducerParameters.CompressionType type) {
-    switch (type) {
-      case COMPRESSION_TYPE_NONE:
-        return CompressionType.NONE;
-      case COMPRESSION_TYPE_LZ4:
-        return CompressionType.LZ4;
-      case COMPRESSION_TYPE_ZLIB:
-        return CompressionType.ZLIB;
-      case COMPRESSION_TYPE_DEFAULT:
-        return null;
-      default:
-        throw new IllegalArgumentException("Invalid compression type");
     }
   }
 

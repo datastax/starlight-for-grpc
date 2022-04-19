@@ -20,6 +20,8 @@ import com.datastax.oss.starlight.grpc.proto.ConsumerResponse;
 import com.datastax.oss.starlight.grpc.proto.ProducerRequest;
 import com.datastax.oss.starlight.grpc.proto.ProducerResponse;
 import com.datastax.oss.starlight.grpc.proto.PulsarGrpc;
+import com.datastax.oss.starlight.grpc.proto.ReaderRequest;
+import com.datastax.oss.starlight.grpc.proto.ReaderResponse;
 import com.google.protobuf.StringValue;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -55,6 +57,24 @@ public class PulsarGrpcService extends PulsarGrpc.PulsarImplBase {
     try {
       ConsumerHandler handler = new ConsumerHandler(service, streamObserver);
       return handler.consume();
+    } catch (IllegalArgumentException e) {
+      streamObserver.onError(
+          Status.INVALID_ARGUMENT
+              .withCause(e)
+              .withDescription(e.getMessage())
+              .asRuntimeException());
+      return new NoopStreamObserver<>();
+    } catch (Throwable t) {
+      streamObserver.onError(t);
+      return new NoopStreamObserver<>();
+    }
+  }
+
+  @Override
+  public StreamObserver<ReaderRequest> read(StreamObserver<ReaderResponse> streamObserver) {
+    try {
+      ReaderHandler handler = new ReaderHandler(service, streamObserver);
+      return handler.read();
     } catch (IllegalArgumentException e) {
       streamObserver.onError(
           Status.INVALID_ARGUMENT

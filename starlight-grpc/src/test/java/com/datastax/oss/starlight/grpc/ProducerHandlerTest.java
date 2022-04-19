@@ -121,18 +121,20 @@ public class ProducerHandlerTest {
             .setProducerParameters(
                 ProducerParameters.newBuilder()
                     .setMessageRoutingMode(
-                        ProducerParameters.MessageRoutingMode
+                        com.datastax.oss.starlight.grpc.proto.MessageRoutingMode
                             .MESSAGE_ROUTING_MODE_ROUND_ROBIN_PARTITION)
                     .setProducerName(producerName)
                     .setInitialSequenceId(UInt64Value.of(initialSequenceId))
                     .setHashingScheme(
-                        ProducerParameters.HashingScheme.HASHING_SCHEME_MURMUR3_32HASH)
+                        com.datastax.oss.starlight.grpc.proto.HashingScheme
+                            .HASHING_SCHEME_MURMUR3_32HASH)
                     .setSendTimeoutMillis(UInt32Value.of(sendTimeoutMillis))
                     .setBatchingEnabled(BoolValue.of(true))
                     .setBatchingMaxMessages(UInt32Value.of(batchingMaxMessages))
                     .setMaxPendingMessages(UInt32Value.of(maxPendingMessages))
                     .setBatchingMaxPublishDelayMillis(UInt64Value.of(batchingMaxPublishDelayMillis))
-                    .setCompressionType(ProducerParameters.CompressionType.COMPRESSION_TYPE_LZ4))
+                    .setCompressionType(
+                        com.datastax.oss.starlight.grpc.proto.CompressionType.COMPRESSION_TYPE_LZ4))
             .build();
     Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
 

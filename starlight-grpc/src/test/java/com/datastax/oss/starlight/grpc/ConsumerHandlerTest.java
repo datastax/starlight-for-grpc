@@ -129,7 +129,8 @@ public class ConsumerHandlerTest {
                     .setSubscription(TEST_SUBSCRIPTION)
                     .setAckTimeoutMillis(UInt64Value.of(ackTimeout))
                     .setSubscriptionType(
-                        ConsumerParameters.SubscriptionType.SUBSCRIPTION_TYPE_SHARED)
+                        com.datastax.oss.starlight.grpc.proto.SubscriptionType
+                            .SUBSCRIPTION_TYPE_SHARED)
                     .setReceiverQueueSize(UInt32Value.of(receiverQueueSize))
                     .setConsumerName(consumerName)
                     .setPriorityLevel(UInt32Value.of(priorityLevel))
@@ -140,7 +141,7 @@ public class ConsumerHandlerTest {
                             .setDeadLetterTopic(dlTopic)
                             .setMaxRedeliverCount(UInt32Value.of(dlMaxRedeliverCount)))
                     .setCryptoFailureAction(
-                        ConsumerParameters.ConsumerCryptoFailureAction
+                        com.datastax.oss.starlight.grpc.proto.ConsumerCryptoFailureAction
                             .CONSUMER_CRYPTO_FAILURE_ACTION_DISCARD))
             .build();
     Context.current().withValue(CLIENT_PARAMS_CTX_KEY, clientParams).attach();
@@ -265,7 +266,7 @@ public class ConsumerHandlerTest {
           public void onCompleted() {}
         };
     new ConsumerHandler(gatewayService, responses).consume();
-    assertTrue(subscribed.await(5, TimeUnit.SECONDS));
+    assertTrue(subscribed.await(1, TimeUnit.SECONDS));
   }
 
   @Test
@@ -384,7 +385,7 @@ public class ConsumerHandlerTest {
             .setEndOfTopic(ConsumerEndOfTopic.getDefaultInstance())
             .build());
 
-    ConsumerResponse consumerResponse = response.get(5, TimeUnit.SECONDS);
+    ConsumerResponse consumerResponse = response.get(1, TimeUnit.SECONDS);
     assertEquals(context, consumerResponse.getContext());
     ConsumerEndOfTopicResponse endOfTopicResponse = consumerResponse.getEndOfTopicResponse();
     assertNotNull(endOfTopicResponse);
@@ -436,27 +437,24 @@ public class ConsumerHandlerTest {
         };
     new ConsumerHandler(gatewayService, responseStreamObserver).consume();
 
-    ConsumerResponse consumerResponse = responses.poll(5, TimeUnit.SECONDS);
+    ConsumerResponse consumerResponse = responses.poll(1, TimeUnit.SECONDS);
     assertNotNull(consumerResponse);
     assertTrue(consumerResponse.hasSubscribeSuccess());
 
-    consumerResponse = responses.poll(5, TimeUnit.SECONDS);
-    assertNotNull(consumerResponse);
-    ConsumerMessage consumerMessage = consumerResponse.getMessage();
-    assertNotNull(consumerMessage);
-    assertArrayEquals(TEST_MESSAGE_ID.toByteArray(), consumerMessage.getMessageId().toByteArray());
-    assertEquals(payload, consumerMessage.getPayload().toStringUtf8());
-    assertEquals(1, consumerMessage.getPropertiesCount());
-    assertEquals("test-property-value", consumerMessage.getPropertiesOrThrow("test-property-key"));
-    assertEquals(publishTime, consumerMessage.getPublishTime());
-    assertEquals(eventTime, consumerMessage.getEventTime());
-    assertEquals(key, consumerMessage.getKey());
-
-    // Check that we receive more messages
     for (int i = 0; i < 100; i++) {
-      consumerResponse = responses.poll(5, TimeUnit.SECONDS);
+      consumerResponse = responses.poll(1, TimeUnit.SECONDS);
       assertNotNull(consumerResponse);
-      assertTrue(consumerResponse.hasMessage());
+      ConsumerMessage consumerMessage = consumerResponse.getMessage();
+      assertNotNull(consumerMessage);
+      assertArrayEquals(
+          TEST_MESSAGE_ID.toByteArray(), consumerMessage.getMessageId().toByteArray());
+      assertEquals(payload, consumerMessage.getPayload().toStringUtf8());
+      assertEquals(1, consumerMessage.getPropertiesCount());
+      assertEquals(
+          "test-property-value", consumerMessage.getPropertiesOrThrow("test-property-key"));
+      assertEquals(publishTime, consumerMessage.getPublishTime());
+      assertEquals(eventTime, consumerMessage.getEventTime());
+      assertEquals(key, consumerMessage.getKey().getValue());
     }
   }
 
@@ -495,11 +493,11 @@ public class ConsumerHandlerTest {
     StreamObserver<ConsumerRequest> requests =
         new ConsumerHandler(gatewayService, responseStreamObserver).consume();
 
-    ConsumerResponse consumerResponse = responses.poll(5, TimeUnit.SECONDS);
+    ConsumerResponse consumerResponse = responses.poll(1, TimeUnit.SECONDS);
     assertNotNull(consumerResponse);
     assertTrue(consumerResponse.hasSubscribeSuccess());
 
-    consumerResponse = responses.poll(5, TimeUnit.SECONDS);
+    consumerResponse = responses.poll(1, TimeUnit.SECONDS);
     assertNotNull(consumerResponse);
     assertNotNull(consumerResponse.getMessage());
 
@@ -515,18 +513,6 @@ public class ConsumerHandlerTest {
     consumerResponse = responses.poll(1, TimeUnit.SECONDS);
     assertNotNull(consumerResponse);
     assertNotNull(consumerResponse.getMessage());
-  }
-
-  @Test
-  void testReceiveMessageException() {
-    CompletableFuture<Message<byte[]>> messageException = new CompletableFuture<>();
-    messageException.completeExceptionally(new PulsarClientException("error"));
-    when(consumer.receiveAsync()).thenReturn(messageException);
-
-    CompletableFuture<ConsumerResponse> response = new CompletableFuture<>();
-    callConsume(response);
-
-    assertTrue(response.isCompletedExceptionally());
   }
 
   @Test

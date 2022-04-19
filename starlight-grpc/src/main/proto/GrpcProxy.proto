@@ -12,6 +12,7 @@ import "google/protobuf/empty.proto";
 service Pulsar {
   rpc Produce(stream ProducerRequest) returns (stream ProducerResponse);
   rpc Consume(stream ConsumerRequest) returns (stream ConsumerResponse);
+  rpc Read(stream ReaderRequest) returns (stream ReaderResponse);
   rpc Ping(google.protobuf.StringValue) returns (google.protobuf.StringValue);
 }
 
@@ -89,30 +90,50 @@ message ConsumerMessage {
   map<string, string> properties = 3;
   uint64 publish_time = 4;
   uint64 event_time = 5;
-  string key = 6;
+  google.protobuf.StringValue key = 6;
 }
 
 message ConsumerEndOfTopicResponse {
   bool reachedEndOfTopic = 1;
 }
 
+message ReaderPermits {
+  uint32 permits = 1;
+}
+
+message ReaderRequest {
+  oneof request {
+    ReaderPermits permits = 1;
+  }
+}
+
+message ReaderResponse {
+  oneof response {
+    google.protobuf.Empty readerSuccess = 1;
+    ConsumerMessage message = 2;
+  }
+}
+
+enum MessageRoutingMode {
+  MESSAGE_ROUTING_MODE_DEFAULT = 0;
+  MESSAGE_ROUTING_MODE_SINGLE_PARTITION = 1;
+  MESSAGE_ROUTING_MODE_ROUND_ROBIN_PARTITION = 2;
+}
+
+enum CompressionType {
+  COMPRESSION_TYPE_DEFAULT = 0;
+  COMPRESSION_TYPE_NONE = 1;
+  COMPRESSION_TYPE_LZ4 = 2;
+  COMPRESSION_TYPE_ZLIB = 3;
+}
+
+enum HashingScheme {
+  HASHING_SCHEME_DEFAULT = 0;
+  HASHING_SCHEME_JAVA_STRING_HASH = 1;
+  HASHING_SCHEME_MURMUR3_32HASH = 2;
+}
+
 message ProducerParameters {
-  enum MessageRoutingMode {
-    MESSAGE_ROUTING_MODE_DEFAULT = 0;
-    MESSAGE_ROUTING_MODE_SINGLE_PARTITION = 1;
-    MESSAGE_ROUTING_MODE_ROUND_ROBIN_PARTITION = 2;
-  }
-  enum CompressionType {
-    COMPRESSION_TYPE_DEFAULT = 0;
-    COMPRESSION_TYPE_NONE = 1;
-    COMPRESSION_TYPE_LZ4 = 2;
-    COMPRESSION_TYPE_ZLIB = 3;
-  }
-  enum HashingScheme {
-    HASHING_SCHEME_DEFAULT = 0;
-    HASHING_SCHEME_JAVA_STRING_HASH = 1;
-    HASHING_SCHEME_MURMUR3_32HASH = 2;
-  }
   google.protobuf.UInt32Value send_timeout_millis = 1;
   google.protobuf.BoolValue batching_enabled = 2;
   google.protobuf.UInt32Value batching_max_messages = 3;
@@ -130,19 +151,21 @@ message DeadLetterPolicy {
   string dead_letter_topic = 2;
 }
 
+enum SubscriptionType {
+  SUBSCRIPTION_TYPE_DEFAULT = 0;
+  SUBSCRIPTION_TYPE_EXCLUSIVE = 1;
+  SUBSCRIPTION_TYPE_FAILOVER = 2;
+  SUBSCRIPTION_TYPE_SHARED = 3;
+}
+
+enum ConsumerCryptoFailureAction {
+  CONSUMER_CRYPTO_FAILURE_ACTION_DEFAULT = 0;
+  CONSUMER_CRYPTO_FAILURE_ACTION_FAIL = 1;
+  CONSUMER_CRYPTO_FAILURE_ACTION_DISCARD = 2;
+  CONSUMER_CRYPTO_FAILURE_ACTION_CONSUME = 3;
+}
+
 message ConsumerParameters {
-  enum SubscriptionType {
-    SUBSCRIPTION_TYPE_DEFAULT = 0;
-    SUBSCRIPTION_TYPE_EXCLUSIVE = 1;
-    SUBSCRIPTION_TYPE_FAILOVER = 2;
-    SUBSCRIPTION_TYPE_SHARED = 3;
-  }
-  enum ConsumerCryptoFailureAction {
-      CONSUMER_CRYPTO_FAILURE_ACTION_DEFAULT = 0;
-      CONSUMER_CRYPTO_FAILURE_ACTION_FAIL = 1;
-      CONSUMER_CRYPTO_FAILURE_ACTION_DISCARD = 2;
-      CONSUMER_CRYPTO_FAILURE_ACTION_CONSUME = 3;
-  }
   string subscription = 1;
   google.protobuf.UInt64Value ack_timeout_millis = 2;
   SubscriptionType subscription_type = 3;
@@ -154,8 +177,24 @@ message ConsumerParameters {
   ConsumerCryptoFailureAction crypto_failure_action = 9;
 }
 
+enum MessageId {
+  LATEST = 0;
+  EARLIEST = 1;
+}
+
+message ReaderParameters {
+  string reader_name = 1;
+  google.protobuf.UInt32Value receiverQueueSize = 2;
+  oneof message_id_oneof {
+    bytes message_id = 3;
+    MessageId message_id_mode = 4;
+  }
+  ConsumerCryptoFailureAction crypto_failure_action = 5;
+}
+
 message ClientParameters {
   string topic = 1;
   ProducerParameters producer_parameters = 2;
   ConsumerParameters consumer_parameters = 3;
+  ReaderParameters reader_parameters = 4;
 }
